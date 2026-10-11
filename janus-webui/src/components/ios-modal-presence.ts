@@ -4,9 +4,10 @@ const DISMISS_MS = 520
 
 /**
  * iOS-style presence for a conditionally mounted modal: stays mounted through
- * the dismiss animation, and resets cleanly when reopened mid-dismiss.
+ * the dismiss animation (dismissMs must match the exit animation length), and
+ * resets cleanly when reopened mid-dismiss.
  */
-export function useIosModalPresence(open: boolean) {
+export function useIosModalPresence(open: boolean, dismissMs = DISMISS_MS) {
   const [mounted, setMounted] = useState(open)
   const [dismissing, setDismissing] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -23,11 +24,11 @@ export function useIosModalPresence(open: boolean) {
     timerRef.current = setTimeout(() => {
       setMounted(false)
       setDismissing(false)
-    }, DISMISS_MS)
+    }, dismissMs)
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [open, mounted])
+  }, [open, mounted, dismissMs])
 
   return { mounted, dismissing }
 }

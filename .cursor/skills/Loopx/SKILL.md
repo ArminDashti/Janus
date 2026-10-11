@@ -1,11 +1,10 @@
 ---
-name: loopx
+name: Loopx
 description: >-
   Inspect LoopX state, or start concrete project work when arguments are provided.
 metadata:
   version: 1.0.0
   author: "Armin Dashti"
-  category: 
   tags: []
   last_updated: "2026-09-10 13:33:02"
   uuid: 614abfdf-89cd-4eaf-a121-ea1b49a4983c

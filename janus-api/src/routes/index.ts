@@ -671,6 +671,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   )
 
   app.post(
+    '/api/projects/:projectId/assign-all-skills',
+    route(async (request) => {
+      const { projectId } = request.params as { projectId: string }
+      const count = await resourceService.applyAllSkillsToProject(projectId)
+      await scannerService.refresh(settingsStore.get())
+      return count
+    })
+  )
+
+  app.post(
     '/api/projects/roots',
     route(async (request) => {
       const body = request.body as { scanPath?: string }

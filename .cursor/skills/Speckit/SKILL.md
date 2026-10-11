@@ -1,18 +1,15 @@
 ---
-name: speckit
+name: Speckit
 description: >-
-  Routes Speckit feature workflow steps (specify, plan, tasks, implement, and
-  related) to the matching nested skill.
+  Routes Speckit feature workflow steps (specify, plan, tasks, implement, and related) to the matching nested skill.
 disable-model-invocation: false
 metadata:
-  version: "1.0.0"
-  author: Armin Dashti
-  category: process
+  version: 1.0.0
+  author: "Armin Dashti"
   tags: [speckit, specify, plan, tasks, implement, router]
   last_updated: "2026-08-02 11:32:30"
   uuid: 7b8174e4-e06a-4181-879e-6c74d58463ed
 ---
-
 # Speckit
 
 ## When to use

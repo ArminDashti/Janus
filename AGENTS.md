@@ -122,3 +122,17 @@ unverified) or skip it. This keeps confident guesses out.
 <!-- When no richer mechanism is available, append dated golden-path entries here.
      Format: ### YYYY-MM-DD — <title>  /  **Goal**, **Steps**, **Gotchas**,
      **What didn't work**. Keep secrets out — point to where they live. -->
+
+## Learned User Preferences
+
+- Refer to skills by their name, never by UUID.
+- Open Settings and About as modal pages in a standard window size, with fade-in and fade-out animation on both open and close.
+- After each task, briefly tell the user the result; omit any follow-up remark when none is needed.
+
+## Learned Workspace Facts
+
+- Janus project list must mirror the filesystem: a project deleted outside the app must also be removed from the app.
+- Projects replaced Repositories; the Projects page uses the same layout as the Skills page, and users pick which skills a project uses (with an option to assign all skills at once).
+- Rules, Hooks, and Instructions were removed from Janus.
+- A skill's folder name follows its name; renaming a skill in the .md editor renames its folder.
+- Unselecting a skill's last project shows a modal warning that the skill will be gone.

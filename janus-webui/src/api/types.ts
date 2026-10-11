@@ -47,6 +47,7 @@ export interface AgentManagerApi {
     assigned: boolean
   ) => Promise<boolean>
   applyAllToAllProjects: (resourceType: Exclude<ResourceType, 'mcp'>) => Promise<number>
+  assignAllSkillsToProject: (projectId: string) => Promise<number>
   setMandatory: (
     resourceType: Exclude<ResourceType, 'mcp'>,
     resourceName: string,

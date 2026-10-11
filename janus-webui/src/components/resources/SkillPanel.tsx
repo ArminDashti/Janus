@@ -36,6 +36,7 @@ export function SkillPanel({
   const [pending, setPending] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState<string | null>(null)
   const [skillSearch, setSkillSearch] = useState('')
+  const [assigningAll, setAssigningAll] = useState(false)
 
   useEffect(() => {
     setSkillSearch('')
@@ -113,6 +114,23 @@ export function SkillPanel({
     }
   }
 
+  const assignAll = async () => {
+    if (!projectId) return
+    setAssigningAll(true)
+    try {
+      await window.agentManager.assignAllSkillsToProject(projectId)
+      onRefresh?.()
+      onSkillsChange()
+    } catch (e) {
+      await showMessage({
+        message: e instanceof Error ? e.message : 'Assign all failed',
+        type: 'error'
+      })
+    } finally {
+      setAssigningAll(false)
+    }
+  }
+
   const visibleSkills = useMemo(() => {
     const q = skillSearch.trim().toLowerCase()
     const sorted = [...skills].sort((a, b) =>
@@ -128,9 +146,20 @@ export function SkillPanel({
   return (
     <aside className="w-full h-full flex flex-col">
       <div className="px-3 py-2 border-b border-zinc-800">
-        <h2 className="text-xs font-medium text-zinc-400">
-          Skills · {assignedCount}/{skills.length}
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-medium text-zinc-400">
+            Skills · {assignedCount}/{skills.length}
+          </h2>
+          <button
+            type="button"
+            onClick={() => void assignAll()}
+            disabled={!projectId || assigningAll || assignedCount === skills.length}
+            title={`Assign every skill to ${projectLabel}`}
+            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {assigningAll ? 'Assigning…' : 'Assign all'}
+          </button>
+        </div>
         <div className="relative mt-2">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500" />
           <input

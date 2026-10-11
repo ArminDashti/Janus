@@ -3,10 +3,12 @@ import { SettingsPage } from '@renderer/pages/SettingsPage'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useIosModalPresence } from '@renderer/components/ios-modal-presence'
 
-/** Preferences dialog — sidebar navigation + sectioned content; iOS-style present and dismiss. */
+const FADE_MS = 200
+
+/** Preferences dialog — sidebar navigation + sectioned content; fades in on open and out on close. */
 export function SettingsModal() {
   const { settingsOpen, closeSettings } = useAppStore()
-  const { mounted, dismissing } = useIosModalPresence(settingsOpen)
+  const { mounted, dismissing } = useIosModalPresence(settingsOpen, FADE_MS)
 
   useEffect(() => {
     if (!settingsOpen) return
@@ -22,7 +24,7 @@ export function SettingsModal() {
   return (
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 ${
-        dismissing ? 'animate-ios-backdrop-out' : 'animate-ios-backdrop-in'
+        dismissing ? 'animate-fade-out' : 'animate-fade-in'
       }`}
       role="presentation"
       onClick={() => closeSettings()}
@@ -31,9 +33,7 @@ export function SettingsModal() {
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
-        className={`bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden w-[min(1296px,92vw)] h-[min(1008px,85vh)] max-h-[85vh] origin-center ${
-          dismissing ? 'animate-ios-modal-out' : 'animate-ios-modal-in'
-        }`}
+        className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden w-[min(1296px,92vw)] h-[min(1008px,85vh)] max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
         <SettingsPage embedded onClose={() => closeSettings()} />

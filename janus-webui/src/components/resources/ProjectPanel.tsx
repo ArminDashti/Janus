@@ -33,6 +33,7 @@ export function ProjectPanel({
   const [pending, setPending] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
+  const [assigningAll, setAssigningAll] = useState(false)
   const [projectSearch, setProjectSearch] = useState('')
 
   const load = useCallback(
@@ -72,6 +73,30 @@ export function ProjectPanel({
     () => Object.values(effectiveAssigned).filter(Boolean).length,
     [effectiveAssigned]
   )
+
+  const allProjectsAssigned = useMemo(
+    () => rows.filter((r) => !r.platformId).every((r) => effectiveAssigned[r.projectId]),
+    [rows, effectiveAssigned]
+  )
+
+  const assignAll = async () => {
+    if (!resourceName) return
+    const projectIds = rows.filter((r) => !r.platformId).map((r) => r.projectId)
+    setAssigningAll(true)
+    try {
+      await window.agentManager.applyProjectAssignment(resourceType, resourceName, projectIds)
+      await window.agentManager.setMandatory(resourceType, resourceName, true)
+      onRefresh?.()
+      setRows((prev) => prev.map((r) => (r.platformId ? r : { ...r, assigned: true })))
+    } catch (e) {
+      await showMessage({
+        message: e instanceof Error ? e.message : 'Assign all failed',
+        type: 'error'
+      })
+    } finally {
+      setAssigningAll(false)
+    }
+  }
 
   const toggle = async (projectId: string) => {
     if (!resourceName) return
@@ -180,9 +205,20 @@ export function ProjectPanel({
   return (
     <aside className="w-full h-full flex flex-col">
       <div className="px-3 py-2 border-b border-zinc-800">
-        <h2 className="text-xs font-medium text-zinc-400">
-          Projects · {assignedCount}/{rows.length}
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-medium text-zinc-400">
+            Projects · {assignedCount}/{rows.length}
+          </h2>
+          <button
+            type="button"
+            onClick={() => void assignAll()}
+            disabled={!resourceName || assigningAll || allProjectsAssigned}
+            title={`Assign this ${resourceLabel} to every project`}
+            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {assigningAll ? 'Assigning…' : 'Assign all'}
+          </button>
+        </div>
         <div className="relative mt-2">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500" />
           <input

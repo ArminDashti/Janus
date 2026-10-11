@@ -541,6 +541,26 @@ export class ResourceService {
     return summaries.length
   }
 
+  /** Assign every skill to one project, keeping its existing assignments. */
+  async applyAllSkillsToProject(projectId: string): Promise<number> {
+    const settings = settingsStore.get()
+    if (!getAllProjects(settings).some((p) => p.id === projectId)) {
+      throw new Error('Project not found')
+    }
+    const scan = await scannerService.scanAll(settings)
+    const summaries = await this.getGroupSummaries(scan, settings, 'skill')
+
+    // ponytail: one rescan per skill (same as applyAllToAllProjects); batch if skill counts grow large.
+    let assigned = 0
+    for (const summary of summaries) {
+      if (summary.assignedProjectIds.includes(projectId)) continue
+      const key = summary.groupKey || summary.name
+      await this.applyProjectAssignment('skill', key, [...summary.assignedProjectIds, projectId])
+      assigned++
+    }
+    return assigned
+  }
+
   async deleteResource(
     scan: ScanResult,
     resourceType: Exclude<ResourceType, 'mcp'>,

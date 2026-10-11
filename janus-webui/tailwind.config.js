@@ -61,9 +61,19 @@ export default {
         'ios-modal-out': {
           from: { opacity: '1', transform: 'scale(1)' },
           to: { opacity: '0', transform: 'scale(0.88)' }
+        },
+        'fade-in': {
+          from: { opacity: '0' },
+          to: { opacity: '1' }
+        },
+        'fade-out': {
+          from: { opacity: '1' },
+          to: { opacity: '0' }
         }
       },
       animation: {
+        'fade-in': 'fade-in 0.2s ease-out both',
+        'fade-out': 'fade-out 0.2s ease-in both',
         'ios-backdrop-in': 'ios-backdrop-in 0.38s cubic-bezier(0.32, 0.72, 0, 1) both',
         'ios-modal-in': 'ios-modal-in 0.52s cubic-bezier(0.32, 0.72, 0, 1) both',
         'ios-backdrop-out': 'ios-backdrop-out 0.38s cubic-bezier(0.32, 0.72, 0, 1) both',

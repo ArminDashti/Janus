@@ -135,6 +135,11 @@ export const agentManagerClient: AgentManagerApi = {
       method: 'POST'
     }),
 
+  assignAllSkillsToProject: (projectId) =>
+    request<number>(`/api/projects/${encodeURIComponent(projectId)}/assign-all-skills`, {
+      method: 'POST'
+    }),
+
   setMandatory: (resourceType, resourceName, mandatory) =>
     request<boolean>(`/api/resources/${resourceType}/${encodeURIComponent(resourceName)}/mandatory`, {
       method: 'POST',
