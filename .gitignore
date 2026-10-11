@@ -23,3 +23,24 @@ janus-api/node_modules/typescript/lib/typescript.js
 janus-webui/node_modules/@esbuild/win32-x64/esbuild.exe
 janus-webui/node_modules/typescript/lib/_tsc.js
 janus-webui/node_modules/typescript/lib/typescript.js
+
+# hygiene
+node_modules/
+dist/
+build/
+bin/
+obj/
+.venv/
+__pycache__/
+*.log
+logs/
+.env
+.env.*
+*.tsbuildinfo
+.cache/
+coverage/
+*.zip
+*.7z
+graphify-out/
+.gitnexus/
+!.env.example
