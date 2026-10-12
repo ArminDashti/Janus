@@ -24,12 +24,11 @@ import { Toggle } from '@renderer/components/Toggle'
 import { useAppStore } from '@renderer/stores/appStore'
 import { showMessage } from '@renderer/stores/messageStore'
 import { cn } from '@renderer/lib/utils'
-import { formatDateWithRelative } from '@shared/utils.browser'
 import type { McpProbeResult, McpResource } from '@shared/types'
 
 type ViewMode = 'list' | 'edit'
 type StatusFilter = 'all' | 'active' | 'disabled' | 'error'
-type SortKey = 'name' | 'directory' | 'lastUpdated'
+type SortKey = 'name' | 'directory'
 
 function statusBadgeClass(
   enabled: boolean,
@@ -159,9 +158,6 @@ export function McpsPage() {
       const existing = map.get(m.name)
       if (existing) {
         existing.platforms = [...new Set([...existing.platforms, ...m.platforms])]
-        const nextAt = m.lastUpdatedAt
-        const prevAt = existing.lastUpdatedAt
-        if (nextAt && (!prevAt || nextAt > prevAt)) existing.lastUpdatedAt = nextAt
       } else {
         map.set(m.name, { ...m, platforms: [...m.platforms] })
       }
@@ -216,12 +212,7 @@ export function McpsPage() {
     const dir = sortDir === 'asc' ? 1 : -1
     rows = [...rows].sort((a, b) => {
       if (sortKey === 'name') return dir * a.name.localeCompare(b.name)
-      if (sortKey === 'directory') {
-        return dir * configDir(a.configPath).localeCompare(configDir(b.configPath))
-      }
-      const at = a.lastUpdatedAt ?? ''
-      const bt = b.lastUpdatedAt ?? ''
-      return dir * at.localeCompare(bt)
+      return dir * configDir(a.configPath).localeCompare(configDir(b.configPath))
     })
     return rows
   }, [mcps, search, statusFilter, directoryFilter, sortKey, sortDir, settings])
@@ -537,37 +528,28 @@ export function McpsPage() {
                 <tr className="border-b border-surface-border text-left text-zinc-500 text-xs uppercase tracking-wide">
                   <th className="px-4 py-3">
                     <SortHeader
-                      label="Name"
+                      label="MCP"
                       active={sortKey === 'name'}
                       dir={sortDir}
                       onClick={() => toggleSort('name')}
                     />
                   </th>
-                  <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Tools</th>
                   <th className="px-4 py-3">
                     <SortHeader
-                      label="Directory"
+                      label="Installed path"
                       active={sortKey === 'directory'}
                       dir={sortDir}
                       onClick={() => toggleSort('directory')}
                     />
                   </th>
-                  <th className="px-4 py-3">
-                    <SortHeader
-                      label="Last Updated"
-                      active={sortKey === 'lastUpdated'}
-                      dir={sortDir}
-                      onClick={() => toggleSort('lastUpdated')}
-                    />
-                  </th>
-                  <th className="px-4 py-3 font-medium w-28">Actions</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {showEmpty ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-16">
+                    <td colSpan={4} className="px-4 py-16">
                       <div className="flex flex-col items-center text-center max-w-sm mx-auto">
                         <div className="relative mb-5 text-zinc-600">
                           <Server size={48} strokeWidth={1.25} />
@@ -596,7 +578,7 @@ export function McpsPage() {
                   </tr>
                 ) : showNoMatches ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-zinc-500">
+                    <td colSpan={4} className="px-4 py-12 text-center text-zinc-500">
                       No MCPs match your filters.
                     </td>
                   </tr>
@@ -607,65 +589,9 @@ export function McpsPage() {
                     return (
                       <Fragment key={row.name}>
                         <tr className="border-b border-zinc-900/80 hover:bg-zinc-900/40 transition-colors">
-                          <td className="px-4 py-3.5 text-zinc-100 font-medium">{row.name}</td>
                           <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span
-                                className={cn(
-                                  'text-xs px-2.5 py-0.5 rounded-full border capitalize',
-                                  statusBadgeClass(enabled, row.status)
-                                )}
-                              >
-                                {statusLabel(enabled, row.status)}
-                              </span>
-                              <Toggle
-                                checked={enabled}
-                                onChange={() => void handleToggleEnabled(row)}
-                                title={enabled ? `Disable ${row.name}` : `Enable ${row.name}`}
-                                ariaLabel={`${enabled ? 'Disable' : 'Enable'} ${row.name}`}
-                              />
-                            </div>
-                            {row.error && enabled && (
-                              <p
-                                className="text-[11px] text-red-400 max-w-[280px] line-clamp-2 mt-1"
-                                title={row.error}
-                              >
-                                {row.error}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-4 py-3.5">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setToolsFor({
-                                  name: row.name,
-                                  status: row.status,
-                                  tools: row.tools,
-                                  error: row.error
-                                })
-                              }
-                              className="text-zinc-300 hover:text-zinc-100 tabular-nums"
-                              title="Open tools"
-                            >
-                              {row.tools.length}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3.5">
-                            <span
-                              className="font-mono text-xs text-zinc-500 max-w-[280px] truncate block"
-                              title={row.configPath}
-                            >
-                              {configDir(row.configPath)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 text-zinc-500 text-xs whitespace-nowrap">
-                            {row.lastUpdatedAt
-                              ? formatDateWithRelative(row.lastUpdatedAt)
-                              : '—'}
-                          </td>
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-0.5">
+                            <div className="text-zinc-100 font-medium">{row.name}</div>
+                            <div className="flex items-center gap-0.5 mt-1">
                               <button
                                 type="button"
                                 onClick={() => void handleTest(row)}
@@ -696,6 +622,57 @@ export function McpsPage() {
                                 <Trash size={15} strokeWidth={1.75} />
                               </button>
                             </div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setToolsFor({
+                                  name: row.name,
+                                  status: row.status,
+                                  tools: row.tools,
+                                  error: row.error
+                                })
+                              }
+                              className="text-zinc-300 hover:text-zinc-100 tabular-nums"
+                              title="Open tools"
+                            >
+                              {row.tools.length}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span
+                              className="font-mono text-xs text-zinc-500 max-w-[280px] truncate block"
+                              title={row.configPath}
+                            >
+                              {configDir(row.configPath)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                className={cn(
+                                  'text-xs px-2.5 py-0.5 rounded-full border capitalize',
+                                  statusBadgeClass(enabled, row.status)
+                                )}
+                              >
+                                {statusLabel(enabled, row.status)}
+                              </span>
+                              <Toggle
+                                checked={enabled}
+                                onChange={() => void handleToggleEnabled(row)}
+                                title={enabled ? `Disable ${row.name}` : `Enable ${row.name}`}
+                                ariaLabel={`${enabled ? 'Disable' : 'Enable'} ${row.name}`}
+                              />
+                            </div>
+                            {row.error && enabled && (
+                              <p
+                                className="text-[11px] text-red-400 max-w-[280px] line-clamp-2 mt-1"
+                                title={row.error}
+                              >
+                                {row.error}
+                              </p>
+                            )}
                           </td>
                         </tr>
                       </Fragment>
