@@ -12,7 +12,9 @@
 //   janus ide list
 //   janus ide enable --ide=<id>
 //   janus ide disable --ide=<id>
-//   janus remove                    (completely remove the local install)
+//   janus stop                      (stop every Janus process and verify the port is free)
+//   janus reinstall [--remove-data=no|yes] [-y]   (rebuild from the repo; yes wipes data)
+//   janus remove | uninstall        (completely remove the local install)
 //   janus update                    (placeholder — no implementation yet)
 //   janus rebuild                   (rebuild Janus.exe from the repo, replace the install, restart the service)
 //   janus __serve --port=N          (internal: background server process)
@@ -27,6 +29,7 @@ import { dirname, extname, join, normalize, sep } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { format } from 'node:util'
 import { createServer } from 'node:net'
+import { createInterface } from 'node:readline/promises'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { registerRoutes } from '../janus-api/src/routes/index'
@@ -515,7 +518,12 @@ Usage:
   janus ide list                        List every IDE/CLI with its state and paths
   janus ide enable --ide=<id>           Enable an IDE/CLI and sync it into projects
   janus ide disable --ide=<id>          Disable an IDE/CLI and purge its project folders
+  janus stop                            Stop Janus completely (service and foreground runs)
+  janus reinstall [--remove-data=no|yes] [-y]
+                                        Reinstall from the repo. Default "no" keeps
+                                        settings.json and logs; "yes" wipes them (asks unless -y)
   janus remove                          Completely remove the local Janus install
+  janus uninstall                       Same as remove
   janus update                          Update Janus (not implemented yet)
   janus rebuild                         Rebuild Janus from the repo, replace the install and
                                         restart the service (runs in a new window)
@@ -645,6 +653,23 @@ async function cmdServiceRestart(argv: string[]): Promise<number> {
   return cmdServiceStart(argv2)
 }
 
+// Full stop: every Janus.exe of this install (service + foreground runs), then verify
+// nothing is left and the default port is free. Idempotent.
+async function cmdStop(): Promise<number> {
+  const n = stopAllInstances('any', process.pid)
+  console.log(n > 0 ? `Stopped ${n} Janus process${n === 1 ? '' : 'es'}.` : 'Janus is not running.')
+  if (findJanusInstances('any', process.pid).length > 0) {
+    console.error('Janus processes are still running after stop.')
+    return 1
+  }
+  const port = readConfiguredPort()
+  if (!(await bindTest(port))) {
+    console.error(`Port ${port} is still in use by another program.`)
+    return 1
+  }
+  return 0
+}
+
 // Starts (or reuses) the detached background service, opens the browser, and
 // returns immediately so the terminal is released.
 async function cmdRun(argv: string[]): Promise<number> {
@@ -741,21 +766,46 @@ function cmdUpdate(): number {
 
 // Runs scripts\install-local.ps1 from the repo recorded at install time. It runs in its
 // own console window because the script stops this very Janus.exe before replacing it.
-function cmdRebuild(): number {
+// Runs a script from the repo recorded at install time, in a new window (the script stops
+// this very Janus.exe, so it cannot run in our own console).
+function runRepoScriptInWindow(scriptName: string, scriptArgs: string[]): number {
   const repoFile = join(installDir, 'repo-root.txt')
   const repoRoot = existsSync(repoFile) ? readFileSync(repoFile, 'utf-8').trim() : ''
-  const script = join(repoRoot, 'scripts', 'install-local.ps1')
+  const script = join(repoRoot, 'scripts', scriptName)
   if (!repoRoot || !existsSync(script)) {
-    console.error(`Repo not found (${repoFile}). Run scripts\\install-local.ps1 once from the repo.`)
+    console.error(`Repo not found (${repoFile}). Run scripts\\${scriptName} once from the repo.`)
     return 1
   }
   const q = (s: string): string => `'${s.replace(/'/g, "''")}'`
-  const ps =
-    `Start-Process powershell.exe -WorkingDirectory ${q(repoRoot)} -ArgumentList ` +
-    `'-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',${q(script)},'-StartService'`
+  const argList = ['-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', script, ...scriptArgs]
+  const ps = `Start-Process powershell.exe -WorkingDirectory ${q(repoRoot)} -ArgumentList ${argList.map(q).join(',')}`
   spawnSync('powershell.exe', [...PS_JSON_FLAGS, ps], { windowsHide: true })
-  console.log('Rebuild started in a new window: it rebuilds Janus.exe, replaces the install and starts the service.')
   return 0
+}
+
+function cmdRebuild(): number {
+  const code = runRepoScriptInWindow('install-local.ps1', ['-StartService'])
+  if (code === 0) console.log('Rebuild started in a new window: it rebuilds Janus.exe, replaces the install and starts the service.')
+  return code
+}
+
+// remove-data=no (default) keeps settings.json and logs; yes wipes them after a confirmation.
+async function cmdReinstall(argv: string[]): Promise<number> {
+  const removeData = parseNamedFlag(argv, 'remove-data') ?? 'no'
+  if (removeData !== 'no' && removeData !== 'yes') fail('--remove-data must be "no" or "yes".')
+  const yes = argv.includes('-y') || argv.includes('--yes')
+  if (removeData === 'yes' && !yes) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    const answer = await rl.question(`This deletes ALL Janus settings, data and logs in ${installDir}. Type "yes" to continue: `)
+    rl.close()
+    if (answer.trim().toLowerCase() !== 'yes') {
+      console.log('Cancelled. Nothing was changed.')
+      return 1
+    }
+  }
+  const code = runRepoScriptInWindow('reinstall.ps1', ['-RemoveData', removeData, ...(yes ? ['-Yes'] : [])])
+  if (code === 0) console.log(`Reinstall started in a new window (remove-data=${removeData}).`)
+  return code
 }
 
 function openBrowser(url: string): void {
@@ -810,7 +860,9 @@ async function cmdStatus(): Promise<number> {
   if (legacy.status === 0) {
     console.log('Legacy:      old Windows service "janus" detected (run scripts\\remove-local.ps1 to remove it)')
   }
-  return 0
+  // Exit codes: 0 running, 3 stopped, 4 not installed.
+  if (!existsSync(join(installDir, 'Janus.exe'))) return 4
+  return found.length > 0 ? 0 : 3
 }
 
 interface CheckResult {
@@ -924,8 +976,20 @@ async function cmdDoctor(): Promise<number> {
 // version / skills / ide commands
 // ---------------------------------------------------------------------------
 
+// Installed and CLI versions are the same build stamp (the CLI is bundled into Janus.exe).
+// Source is the repo's janus-api/package.json, read via the repo-root.txt written at install.
 function cmdVersion(): number {
-  console.log(`Janus ${JANUS_VERSION}`)
+  const repoFile = join(installDir, 'repo-root.txt')
+  const repoRoot = existsSync(repoFile) ? readFileSync(repoFile, 'utf-8').trim() : ''
+  const pkg = join(repoRoot, 'janus-api', 'package.json')
+  const source = repoRoot && existsSync(pkg)
+    ? (JSON.parse(readFileSync(pkg, 'utf-8')) as { version?: string }).version ?? 'unknown'
+    : 'unknown (no repo-root.txt)'
+  console.log(`Installed: ${JANUS_VERSION}`)
+  console.log(`Source:    ${source}`)
+  if (source !== 'unknown' && source !== JANUS_VERSION) {
+    console.warn(`Mismatch: installed ${JANUS_VERSION} differs from source ${source}. Run: janus rebuild`)
+  }
   return 0
 }
 
@@ -1145,10 +1209,17 @@ async function main(): Promise<void> {
     case 'run':
       process.exit(await cmdRun(argv.slice(1)))
       break
+    case 'stop':
+      process.exit(await cmdStop())
+      break
+    case 'reinstall':
+      process.exit(await cmdReinstall(argv.slice(1)))
+      break
     case 'port':
       process.exit(await cmdPort(argv.slice(1)))
       break
     case 'remove':
+    case 'uninstall':
       process.exit(await cmdRemove())
       break
     case 'update':

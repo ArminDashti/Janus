@@ -23,7 +23,8 @@
     janus port [--port=N]
     janus service start [--port=N] | janus service stop | janus service status
     janus service restart [--port=N]
-    janus remove | janus update | janus rebuild
+    janus stop | janus reinstall [--remove-data=no|yes] [-y]
+    janus remove | janus uninstall | janus update | janus rebuild
   (--port defaults to the configured port, initial default 47911; change it with: janus port --port=N.)
 
 .EXAMPLE
