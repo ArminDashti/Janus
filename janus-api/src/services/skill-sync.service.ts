@@ -120,12 +120,8 @@ function findNearestSkillRoot(changedPath: string, skillsDir: string): string | 
   }
 }
 
-/** Peers with the same folder name whose SKILL.md still matches previousHash (clones). */
-async function collectCloneSkillRoots(
-  skillName: string,
-  sourceRoot: string,
-  previousHash: string
-): Promise<string[]> {
+/** Every existing same-name copy in other projects/platforms (all copies follow the source). */
+async function collectCloneSkillRoots(skillName: string, sourceRoot: string): Promise<string[]> {
   const settings = settingsStore.get()
   const sourceNorm = normalizePath(sourceRoot)
   const destRoots: string[] = []
@@ -141,8 +137,6 @@ async function collectCloneSkillRoots(
           const dest = join(skillsDir, ...skillName.split(/[/\\]/).filter(Boolean))
           if (!existsSync(join(dest, 'SKILL.md'))) continue
           if (normalizePath(dest) === sourceNorm) continue
-          const destHash = await hashSkillRoot(dest)
-          if (destHash !== previousHash) continue
           destRoots.push(dest)
         }
       }
@@ -165,18 +159,12 @@ export async function syncSkillFromResolved(
   const newHash = await hashSkillRoot(sourceRoot)
   if (!newHash) return
 
-  if (!previousHash) {
-    // First sighting: record hash only — avoid wiping unknown divergent peers.
-    contentHashByRoot.set(sourceNorm, newHash)
-    return
-  }
-
   if (previousHash === newHash) {
     contentHashByRoot.set(sourceNorm, newHash)
     return
   }
 
-  const destRoots = await collectCloneSkillRoots(skillName, sourceRoot, previousHash)
+  const destRoots = await collectCloneSkillRoots(skillName, sourceRoot)
   if (destRoots.length === 0) {
     contentHashByRoot.set(sourceNorm, newHash)
     return

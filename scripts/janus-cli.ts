@@ -14,6 +14,7 @@
 //   janus ide disable --ide=<id>
 //   janus remove                    (completely remove the local install)
 //   janus update                    (placeholder — no implementation yet)
+//   janus rebuild                   (rebuild Janus.exe from the repo, replace the install, restart the service)
 //   janus __serve --port=N          (internal: background server process)
 //
 // The server is composed here from janus-api's exported pieces (registerRoutes,
@@ -495,9 +496,9 @@ Usage:
   janus version                         Show the Janus version
   janus help                            Show this help
   janus run [--port=N] [--no-open]
-                                        Run API + WebUI in the foreground and open
-                                        the browser (if the background service is
-                                        already running, opens its URL instead)
+                                        Start API + WebUI in the background, open
+                                        the browser, and release the terminal
+                                        (if already running, opens its URL instead)
   janus port [--port=N]                 Show the default port, or set it
                                         (default: ${DEFAULT_PORT}; persisted in settings.json)
   janus service start [--port=N]        Start the background service
@@ -516,6 +517,8 @@ Usage:
   janus ide disable --ide=<id>          Disable an IDE/CLI and purge its project folders
   janus remove                          Completely remove the local Janus install
   janus update                          Update Janus (not implemented yet)
+  janus rebuild                         Rebuild Janus from the repo, replace the install and
+                                        restart the service (runs in a new window)
 `
 
 function cmdHelp(): number {
@@ -642,41 +645,17 @@ async function cmdServiceRestart(argv: string[]): Promise<number> {
   return cmdServiceStart(argv2)
 }
 
+// Starts (or reuses) the detached background service, opens the browser, and
+// returns immediately so the terminal is released.
 async function cmdRun(argv: string[]): Promise<number> {
-  const { port, explicit } = parsePortFlag(argv)
   const noOpen = argv.some((a) => a === '--no-open')
-
-  // If a background service is already up, just open its URL.
-  const bg = findJanusInstances('serve')
-  if (bg.length > 0 && bg[0].port !== null) {
-    const url = `http://127.0.0.1:${bg[0].port}/`
-    console.log(`Background service already running at ${url}`)
-    if (!noOpen) openBrowser(url)
-    return 0
-  }
-
-  const chosen = explicit && port !== null ? port : readConfiguredPort()
-  if (!(await bindTest(chosen))) {
-    console.error(`Port ${chosen} is already in use.${portInUseHint(explicit)}`)
-    return 1
-  }
-
-  try {
-    await serve(chosen)
-  } catch (err) {
-    const e = err as NodeJS.ErrnoException
-    if (e && e.code === 'EADDRINUSE') {
-      console.error(`Port ${chosen} is already in use.${portInUseHint(explicit)}`)
-      return 1
-    }
-    throw err
-  }
-
-  const url = `http://127.0.0.1:${chosen}/`
+  const started = await cmdServiceStart(argv)
+  if (started !== 0) return started
+  const e = findJanusInstances('serve')[0]
+  if (!e || e.port === null) return 1
+  const url = `http://127.0.0.1:${e.port}/`
   if (!noOpen) openBrowser(url)
-  console.log('Press Ctrl+C to stop.')
-  // Keep the process alive until signal; serve() registered handlers.
-  await new Promise<void>(() => { /* run until SIGINT/SIGTERM */ })
+  console.log(`Janus is running in the background at ${url}. Use "janus service stop" to stop it.`)
   return 0
 }
 
@@ -758,6 +737,25 @@ function removeUserPathEntry(dir: string): void {
 function cmdUpdate(): number {
   console.error('janus update: not implemented yet.')
   return 1
+}
+
+// Runs scripts\install-local.ps1 from the repo recorded at install time. It runs in its
+// own console window because the script stops this very Janus.exe before replacing it.
+function cmdRebuild(): number {
+  const repoFile = join(installDir, 'repo-root.txt')
+  const repoRoot = existsSync(repoFile) ? readFileSync(repoFile, 'utf-8').trim() : ''
+  const script = join(repoRoot, 'scripts', 'install-local.ps1')
+  if (!repoRoot || !existsSync(script)) {
+    console.error(`Repo not found (${repoFile}). Run scripts\\install-local.ps1 once from the repo.`)
+    return 1
+  }
+  const q = (s: string): string => `'${s.replace(/'/g, "''")}'`
+  const ps =
+    `Start-Process powershell.exe -WorkingDirectory ${q(repoRoot)} -ArgumentList ` +
+    `'-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',${q(script)},'-StartService'`
+  spawnSync('powershell.exe', [...PS_JSON_FLAGS, ps], { windowsHide: true })
+  console.log('Rebuild started in a new window: it rebuilds Janus.exe, replaces the install and starts the service.')
+  return 0
 }
 
 function openBrowser(url: string): void {
@@ -1155,6 +1153,9 @@ async function main(): Promise<void> {
       break
     case 'update':
       process.exit(cmdUpdate())
+      break
+    case 'rebuild':
+      process.exit(cmdRebuild())
       break
     default:
       console.error(`Unknown command: ${cmd}\n\n${USAGE}`)

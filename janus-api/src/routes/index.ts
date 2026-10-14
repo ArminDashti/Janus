@@ -33,7 +33,7 @@ import {
   stopFileWatcher
 } from '../services/watcher.service'
 import { getAdapter } from '../platforms'
-import { refactorWithActiveApi } from '../services/api-refactor.service'
+import { refactorWithActiveProvider } from '../services/llm-provider.service'
 import { HUB_SOURCES, importHubSkill, listHubSkills } from '../services/hub.service'
 
 type NonMcpResourceType = Exclude<ResourceType, 'mcp'>
@@ -855,7 +855,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       if (!body.resourceType || !body.content || !body.userPrompt) {
         throw new Error('resourceType, content, and userPrompt are required')
       }
-      return refactorWithActiveApi({
+      return refactorWithActiveProvider({
         resourceType: body.resourceType as 'skill' | 'subAgent',
         content: body.content,
         userPrompt: body.userPrompt

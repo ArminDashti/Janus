@@ -671,20 +671,26 @@ function Ensure-JanusLocalLayout {
 }
 
 function Get-JanusLocalInstances {
-    # Every Janus.exe process launched FROM the local install dir (service, run, stray).
-    # Legacy WinSW wrappers (janus.exe under Program Files) never match this path.
-    $exe = Join-Path (Get-JanusLocalRoot) 'Janus.exe'
-    return @(Get-CimInstance Win32_Process -Filter "Name='Janus.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $exe) })
+    # Every running Janus.exe (service, run, stray, legacy). Matched by image name only:
+    # ExecutablePath is blank for elevated processes, so a path match would miss them.
+    return @(Get-CimInstance Win32_Process -Filter "Name='Janus.exe'" -ErrorAction SilentlyContinue)
 }
 
 function Stop-JanusLocalProcesses {
     $procs = @(Get-JanusLocalInstances)
     if ($procs.Count -eq 0) { return }
     Write-Host "Closing running Janus (PID(s): $(($procs | ForEach-Object { $_.ProcessId }) -join ', '))..."
+    $refused = @()
     foreach ($p in $procs) {
         try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop }
-        catch { Write-Warning "Could not stop PID $($p.ProcessId): $($_.Exception.Message)" }
+        catch { $refused += $p.ProcessId }
+    }
+    if ($refused.Count -gt 0) {
+        # Elevated instances refuse a normal kill: close them in one elevated taskkill (one UAC prompt).
+        Write-Host "Elevation needed to close PID(s): $($refused -join ', ') (approve the UAC prompt)..."
+        $killArgs = @($refused | ForEach-Object { '/PID', $_ }) + @('/T', '/F')
+        try { Start-Process taskkill.exe -ArgumentList $killArgs -Verb RunAs -WindowStyle Hidden -Wait | Out-Null }
+        catch { Write-Warning "Elevated close was not completed: $($_.Exception.Message)" }
     }
     $deadline = (Get-Date).AddSeconds(8)
     while ((Get-Date) -lt $deadline) {

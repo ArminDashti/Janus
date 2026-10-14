@@ -19,9 +19,13 @@ export function createDefaultSettings(): AppSettings {
     platforms,
     projectRoots: [],
     activeApiProvider: 'openRouter',
-    openRouter: {
-      apiKey: '',
-      model: 'openai/gpt-4o-mini'
+    providers: {
+      openAi: { apiKey: '', model: 'gpt-4o-mini', baseUrl: '' },
+      anthropic: { apiKey: '', model: 'claude-3-5-haiku-latest', baseUrl: '' },
+      opencodeGo: { apiKey: '', model: '', baseUrl: '' },
+      opencodeZen: { apiKey: '', model: '', baseUrl: '' },
+      openRouter: { apiKey: '', model: 'openai/gpt-4o-mini', baseUrl: '' },
+      openAiCompatible: { apiKey: '', model: '', baseUrl: '' }
     },
     assignments: {
       skills: {},

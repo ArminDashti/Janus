@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { createDefaultSettings } from '../shared/defaults'
-import type { AppSettings } from '../shared/types'
+import type { ApiProviderConfig, AppSettings } from '../shared/types'
 import {
+  API_PROVIDER_IDS,
   DEFAULT_PLATFORM_PROJECT_DIRS,
   DEFAULT_PLATFORM_ROOTS,
   PLATFORM_IDS,
@@ -22,8 +23,18 @@ function migrateSettings(settings: AppSettings): AppSettings {
     resourceCategories?: unknown
     hub?: unknown
     cursorApi?: unknown
+    openRouter?: Partial<ApiProviderConfig>
   }
-  const { github: _g, sync: _s, repoBank: _r, resourceCategories: _c, hub: _h, cursorApi: _ca, ...rest } = legacy
+  const {
+    github: _g,
+    sync: _s,
+    repoBank: _r,
+    resourceCategories: _c,
+    hub: _h,
+    cursorApi: _ca,
+    openRouter: legacyOpenRouter,
+    ...rest
+  } = legacy
   const merged = { ...defaults, ...rest }
 
   merged.assignments = {
@@ -77,9 +88,13 @@ function migrateSettings(settings: AppSettings): AppSettings {
     ...(settings.uiFilters ?? {})
   }
 
-  merged.openRouter = {
-    ...defaults.openRouter,
-    ...(settings.openRouter ?? {})
+  merged.providers = { ...defaults.providers }
+  for (const id of API_PROVIDER_IDS) {
+    merged.providers[id] = { ...defaults.providers[id], ...(settings.providers?.[id] ?? {}) }
+  }
+  // Pre-Providers settings stored the OpenRouter key/model at the top level.
+  if (legacyOpenRouter) {
+    merged.providers.openRouter = { ...merged.providers.openRouter, ...legacyOpenRouter }
   }
 
   merged.updates = {
@@ -87,7 +102,9 @@ function migrateSettings(settings: AppSettings): AppSettings {
     ...(settings.updates ?? {})
   }
 
-  merged.activeApiProvider = 'openRouter'
+  if (!API_PROVIDER_IDS.includes(merged.activeApiProvider)) {
+    merged.activeApiProvider = defaults.activeApiProvider
+  }
 
   return merged
 }

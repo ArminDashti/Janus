@@ -56,8 +56,33 @@ export interface UiFilterState {
   sortDir: 'asc' | 'desc'
 }
 
-/** Active provider for API-backed refactor (Settings → API). */
-export type ApiProviderId = 'openRouter'
+export const API_PROVIDER_IDS = [
+  'openAi',
+  'anthropic',
+  'opencodeGo',
+  'opencodeZen',
+  'openRouter',
+  'openAiCompatible'
+] as const
+
+/** Providers usable for skill editing (Settings → Providers). */
+export type ApiProviderId = (typeof API_PROVIDER_IDS)[number]
+
+export const API_PROVIDER_LABELS: Record<ApiProviderId, string> = {
+  openAi: 'OpenAI',
+  anthropic: 'Anthropic',
+  opencodeGo: 'OpenCode Go',
+  opencodeZen: 'OpenCode Zen',
+  openRouter: 'OpenRouter',
+  openAiCompatible: 'OpenAI-Compatible'
+}
+
+export interface ApiProviderConfig {
+  apiKey: string
+  model: string
+  /** Base URL; used only by openAiCompatible. */
+  baseUrl: string
+}
 
 export interface AppSettings {
   window: { maximized: boolean }
@@ -69,12 +94,9 @@ export interface AppSettings {
   dataPath: string
   platforms: PlatformConfig[]
   projectRoots: ProjectRootConfig[]
-  /** Which API provider Refactor uses. */
+  /** Which API provider skill editing uses. */
   activeApiProvider: ApiProviderId
-  openRouter: {
-    apiKey: string
-    model: string
-  }
+  providers: Record<ApiProviderId, ApiProviderConfig>
   uiFilters: Record<string, Partial<UiFilterState>>
   /** Per-MCP enabled state keyed by MCP name (absent ⇒ enabled). */
   mcpEnabled?: Record<string, boolean>

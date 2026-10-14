@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { DownloadCloud, FolderCog, Layers, Settings2, SlidersHorizontal, Terminal, X } from 'lucide-react'
+import { DownloadCloud, FolderCog, KeyRound, Layers, Settings2, SlidersHorizontal, Terminal, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -7,9 +7,10 @@ import { GeneralTab } from '@renderer/components/settings/GeneralTab'
 import { AppearanceTab } from '@renderer/components/settings/AppearanceTab'
 import { PlatformsTab } from '@renderer/components/settings/PlatformsTab'
 import { ProjectImportSection } from '@renderer/components/settings/ProjectImportSection'
+import { ProvidersTab } from '@renderer/components/settings/ProvidersTab'
 import { UpdatesTab } from '@renderer/components/settings/UpdatesTab'
 
-type SettingsTab = 'general' | 'appearance' | 'platforms' | 'projects' | 'updates'
+type SettingsTab = 'general' | 'appearance' | 'platforms' | 'providers' | 'projects' | 'updates'
 
 interface TabDef {
   id: SettingsTab
@@ -40,6 +41,13 @@ const TABS: TabDef[] = [
     icon: Terminal,
     heading: 'IDE / CLI',
     description: 'Enable AI platforms and set where their skills and rules folders live.'
+  },
+  {
+    id: 'providers',
+    label: 'Providers',
+    icon: KeyRound,
+    heading: 'Providers',
+    description: 'Add API keys and choose the provider and model that edit your skills.'
   },
   {
     id: 'projects',
@@ -162,6 +170,9 @@ export function SettingsPage({ embedded = false, onClose }: SettingsPageProps) {
           )}
           {tab === 'platforms' && (
             <PlatformsTab settings={localSettings} onChange={setLocalSettings} />
+          )}
+          {tab === 'providers' && (
+            <ProvidersTab settings={localSettings} onChange={setLocalSettings} />
           )}
           {tab === 'projects' && (
             <ProjectImportSection settings={localSettings} onChange={setLocalSettings} />

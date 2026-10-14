@@ -23,13 +23,16 @@
     janus port [--port=N]
     janus service start [--port=N] | janus service stop | janus service status
     janus service restart [--port=N]
-    janus remove | janus update
+    janus remove | janus update | janus rebuild
   (--port defaults to the configured port, initial default 47911; change it with: janus port --port=N.)
 
 .EXAMPLE
   .\install-local.ps1
 #>
-param()
+param(
+    # `janus rebuild` passes this so the service always starts after the rebuild.
+    [switch]$StartService
+)
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_common.ps1"
@@ -56,6 +59,8 @@ if (-not (Test-Path -LiteralPath $staged)) { throw "Build did not produce $stage
 
 # 2. Layout: logs\{infos,warnings,errors} + seed settings.json (never overwrites an existing one).
 Ensure-JanusLocalLayout
+# Lets `janus rebuild` find scripts\install-local.ps1 from any directory.
+Set-Content -LiteralPath (Join-Path $root 'repo-root.txt') -Value (Get-JanusRepoRoot) -Encoding UTF8
 
 # 3. Close app -> remove old .exe -> replace with the new .exe (retries on file locks).
 Copy-JanusLocalFileWithRetry -Source $staged -Destination $exe
@@ -64,7 +69,7 @@ Copy-JanusLocalFileWithRetry -Source $staged -Destination $exe
 Add-JanusUserPathEntry -Dir $root
 
 # 5. Start fresh / restart-if-running; a stopped app stays stopped after an update.
-if ($wasRunning -or -not $alreadyInstalled) {
+if ($wasRunning -or -not $alreadyInstalled -or $StartService) {
     Write-Host 'Starting service...'
     & $exe service start
     if ($LASTEXITCODE -ne 0) { throw "janus service start failed (exit $LASTEXITCODE)" }
