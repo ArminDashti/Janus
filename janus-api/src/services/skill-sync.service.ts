@@ -152,7 +152,8 @@ async function collectCloneSkillRoots(
   return destRoots
 }
 
-async function syncSkillFromResolved(
+/** Fan out a saved skill to same-name clones still on `previousHash`. Called directly by the save route. */
+export async function syncSkillFromResolved(
   skillName: string,
   sourceRoot: string,
   previousHash: string | undefined

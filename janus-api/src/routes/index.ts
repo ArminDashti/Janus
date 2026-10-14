@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { AppSettings, PlatformId, ProjectInfo, ProjectRootConfig, ResourceType } from '../shared/types'
 import { DEFAULT_PLATFORM_PROJECT_DIRS } from '../shared/types'
 import { createDefaultSettings } from '../shared/defaults'
-import { expandHome, parseFrontmatter, skillFolderNameFromKey, stableId } from '../shared/utils'
+import { expandHome, parseFrontmatter, skillContentHash, skillFolderNameFromKey, stableId } from '../shared/utils'
 import { getAppRoot } from '../app-paths'
 import { assignmentService } from '../services/assignment.service'
 import { agentDebugLog } from '../services/debug-log'
@@ -23,6 +23,7 @@ import { projectBootstrapService } from '../services/project-bootstrap.service'
 import { normalizeScanPath, rescanProjectRoots } from '../services/project-root-rescan.service'
 import { resourceService } from '../services/resource.service'
 import { scannerService } from '../services/scanner.service'
+import { resolveSkillFromPath, syncSkillFromResolved } from '../services/skill-sync.service'
 import { settingsStore } from '../services/settings-store'
 import { applyStartupSetting } from '../services/startup.service'
 import { applyUpdate, checkForUpdates } from '../services/update.service'
@@ -294,6 +295,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         throw new Error('filePath, content, and currentResourceName are required')
       }
 
+      // Hash before any rename/write: clones still carry this content, so they match it.
+      const previousHash = skillContentHash(await fileService.readText(body.filePath))
+
       const fmName = parseFrontmatter(body.content).frontmatter.name
       const frontmatterName =
         typeof fmName === 'string' && fmName.trim() ? fmName.trim() : null
@@ -313,7 +317,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
 
       await fileService.writeText(targetPath, body.content)
-      await scannerService.refresh(settingsStore.get())
+
+      // Fan out now instead of relying on the watcher, which races the cache refresh.
+      const resolved = resolveSkillFromPath(targetPath)
+      if (resolved) {
+        void syncSkillFromResolved(resolved.skillName, resolved.sourceRoot, previousHash).catch((err) =>
+          console.error('Skill fan-out failed:', err)
+        )
+      }
+      scannerService.scheduleBackgroundRefresh(settingsStore.get())
 
       return { filePath: targetPath }
     })
