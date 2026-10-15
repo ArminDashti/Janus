@@ -323,7 +323,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       // Fan out now instead of relying on the watcher, which races the cache refresh.
       const resolved = resolveSkillFromPath(targetPath)
       if (resolved) {
-        void syncSkillFromResolved(resolved.skillName, resolved.sourceRoot, previousHash).catch((err) =>
+        await syncSkillFromResolved(resolved.skillName, resolved.sourceRoot, previousHash).catch((err) =>
           console.error('Skill fan-out failed:', err)
         )
       }

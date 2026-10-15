@@ -1,5 +1,6 @@
 import { existsSync } from 'fs'
 import { dirname, join, resolve } from 'path'
+import { getSkillsStorePath } from '../app-paths'
 import { skillContentHash } from '../shared/utils'
 import { getAdapter } from '../platforms'
 import { fileService } from './file.service'
@@ -62,41 +63,53 @@ export async function withSkillSyncPaused<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export function resolveSkillFromPath(
-  changedPath: string
-): { skillName: string; sourceRoot: string } | null {
+/** Every skills dir holding copies of a skill: Janus store, platform global, and project dirs. */
+function allSkillsDirs(): string[] {
   const settings = settingsStore.get()
-  const abs = resolve(changedPath)
-  const normalizedAbs = normalizePath(abs)
-
+  const dirs = [getSkillsStorePath()]
+  for (const platform of settings.platforms) {
+    if (!platform.enabled) continue
+    const adapter = getAdapter(platform.id)
+    if (!adapter) continue
+    // Mirrors scanner.service: Cursor global skills live only in ~/.cursor/skills.
+    const globalDirs =
+      platform.id === 'cursor'
+        ? [join(platform.rootPath, 'skills')]
+        : adapter.getPlatformPaths(platform.rootPath).skillsDirs
+    dirs.push(...globalDirs)
+  }
   for (const root of settings.projectRoots) {
     for (const project of root.projects) {
       for (const platform of settings.platforms) {
         if (!platform.enabled) continue
         const adapter = getAdapter(platform.id)
         if (!adapter) continue
-        const paths = adapter.getProjectPaths(project.path, platform.projectDirName)
-        for (const skillsDir of paths.skillsDirs) {
-          const skillsDirResolved = resolve(skillsDir)
-          const skillsDirNorm = normalizePath(skillsDirResolved)
-          if (
-            normalizedAbs !== skillsDirNorm &&
-            !normalizedAbs.startsWith(`${skillsDirNorm}/`)
-          ) {
-            continue
-          }
-
-          const skillRoot = findNearestSkillRoot(abs, skillsDirResolved)
-          if (!skillRoot) continue
-
-          const skillName = skillRoot
-            .slice(skillsDirResolved.length)
-            .replace(/^[/\\]+/, '')
-          if (!skillName) continue
-          return { skillName, sourceRoot: skillRoot }
-        }
+        dirs.push(...adapter.getProjectPaths(project.path, platform.projectDirName).skillsDirs)
       }
     }
+  }
+  return dirs
+}
+
+export function resolveSkillFromPath(
+  changedPath: string
+): { skillName: string; sourceRoot: string } | null {
+  const abs = resolve(changedPath)
+  const normalizedAbs = normalizePath(abs)
+
+  for (const skillsDir of allSkillsDirs()) {
+    const skillsDirResolved = resolve(skillsDir)
+    const skillsDirNorm = normalizePath(skillsDirResolved)
+    if (normalizedAbs !== skillsDirNorm && !normalizedAbs.startsWith(`${skillsDirNorm}/`)) {
+      continue
+    }
+
+    const skillRoot = findNearestSkillRoot(abs, skillsDirResolved)
+    if (!skillRoot) continue
+
+    const skillName = skillRoot.slice(skillsDirResolved.length).replace(/^[/\\]+/, '')
+    if (!skillName) continue
+    return { skillName, sourceRoot: skillRoot }
   }
   return null
 }
@@ -122,25 +135,15 @@ function findNearestSkillRoot(changedPath: string, skillsDir: string): string | 
 
 /** Every existing same-name copy in other projects/platforms (all copies follow the source). */
 async function collectCloneSkillRoots(skillName: string, sourceRoot: string): Promise<string[]> {
-  const settings = settingsStore.get()
   const sourceNorm = normalizePath(sourceRoot)
   const destRoots: string[] = []
 
-  for (const root of settings.projectRoots) {
-    for (const project of root.projects) {
-      for (const platform of settings.platforms) {
-        if (!platform.enabled) continue
-        const adapter = getAdapter(platform.id)
-        if (!adapter) continue
-        const paths = adapter.getProjectPaths(project.path, platform.projectDirName)
-        for (const skillsDir of paths.skillsDirs) {
-          const dest = join(skillsDir, ...skillName.split(/[/\\]/).filter(Boolean))
-          if (!existsSync(join(dest, 'SKILL.md'))) continue
-          if (normalizePath(dest) === sourceNorm) continue
-          destRoots.push(dest)
-        }
-      }
-    }
+  for (const skillsDir of allSkillsDirs()) {
+    const dest = join(skillsDir, ...skillName.split(/[/\\]/).filter(Boolean))
+    if (!existsSync(join(dest, 'SKILL.md'))) continue
+    if (normalizePath(dest) === sourceNorm) continue
+    if (destRoots.some((d) => normalizePath(d) === normalizePath(dest))) continue
+    destRoots.push(dest)
   }
 
   return destRoots
