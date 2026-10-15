@@ -52,6 +52,7 @@ else {
     Write-Host "No local install at $root (skipping)."
 }
 Remove-JanusUserPathEntry -Dir $root
+Clear-JanusLocalRoot
 
 # 1b. App data (database, repo-bank, ...) under %ProgramData%\Janus.
 if (Test-Path -LiteralPath $script:JanusDataRoot) {

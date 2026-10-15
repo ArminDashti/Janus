@@ -1,15 +1,18 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Install or update local Janus under %LOCALAPPDATA%\Janus as a single Janus.exe (no admin needed).
+  Install or update local Janus as a single Janus.exe. First install asks for the location:
+    1) %LOCALAPPDATA%\Janus (default, no admin)   2) %APPDATA%\Janus
+    3) %ProgramFiles%\Janus (admin, UAC prompt)   4) custom absolute folder
+  The chosen folder is saved in HKCU:\Software\Janus (InstallDir); updates keep it.
 
 .DESCRIPTION
   Install layout:
-    %LOCALAPPDATA%\Janus\Janus.exe                single executable (API + WebUI embedded)
-    %LOCALAPPDATA%\Janus\settings.json            app settings (created from template, preserved on update)
-    %LOCALAPPDATA%\Janus\logs\infos\YYYY-MM-DD.txt     info log    (one file per day)
-    %LOCALAPPDATA%\Janus\logs\warnings\YYYY-MM-DD.txt  warning log (one file per day)
-    %LOCALAPPDATA%\Janus\logs\errors\YYYY-MM-DD.txt    error log   (one file per day)
+    <root>\Janus.exe                single executable (API + WebUI embedded)
+    <root>\settings.json            app settings (created from template, preserved on update)
+    <root>\logs\infos\YYYY-MM-DD.txt     info log    (one file per day)
+    <root>\logs\warnings\YYYY-MM-DD.txt  warning log (one file per day)
+    <root>\logs\errors\YYYY-MM-DD.txt    error log   (one file per day)
 
   Fresh install     : builds Janus.exe, installs it, adds the install dir to your user PATH,
                       and starts the background service.
@@ -32,13 +35,26 @@
 #>
 param(
     # `janus rebuild` passes this so the service always starts after the rebuild.
-    [switch]$StartService
+    [switch]$StartService,
+    # Install folder; skips the location prompt. Omit to use the saved/default location.
+    [string]$InstallDir
 )
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_common.ps1"
 
-$root = Get-JanusLocalRoot
+$root = Resolve-JanusInstallRoot -Requested $InstallDir
+$previousRoot = Get-JanusSavedLocalRoot
+
+# Program Files needs admin: relaunch elevated with the chosen folder (one UAC prompt).
+if ((Test-JanusUnderProgramFiles -Dir $root) -and -not (Test-JanusAdmin)) {
+    Write-Host 'Program Files install selected - relaunching as Administrator (UAC)...' -ForegroundColor Yellow
+    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath), '-InstallDir', ('"{0}"' -f $root))
+    if ($StartService) { $argList += '-StartService' }
+    $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList -Wait -PassThru
+    exit $p.ExitCode
+}
+Set-JanusLocalRoot -Dir $root
 $exe = Join-Path $root 'Janus.exe'
 $alreadyInstalled = Test-Path -LiteralPath $exe
 $wasRunning = $false
@@ -67,6 +83,7 @@ Set-Content -LiteralPath (Join-Path $root 'repo-root.txt') -Value (Get-JanusRepo
 Copy-JanusLocalFileWithRetry -Source $staged -Destination $exe
 
 # 4. Make `janus ...` resolvable: add the install dir to the user PATH (no admin needed).
+if ($previousRoot -and ($previousRoot -ne $root)) { Remove-JanusUserPathEntry -Dir $previousRoot }
 Add-JanusUserPathEntry -Dir $root
 
 # 5. Start fresh / restart-if-running; a stopped app stays stopped after an update.

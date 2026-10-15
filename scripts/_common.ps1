@@ -611,8 +611,75 @@ function Start-JanusApp {
 # Local single-exe install helpers (build-janus-exe / install-local / remove-local)
 # -----------------------------------------------------------------------------
 
-function Get-JanusLocalRoot {
+$script:JanusLocationRegKey = 'HKCU:\Software\Janus'
+
+function Get-JanusDefaultLocalRoot {
     return (Join-Path $env:LOCALAPPDATA 'Janus')
+}
+
+function Get-JanusSavedLocalRoot {
+    # Install dir chosen at install time (HKCU), or $null when Janus was never installed locally.
+    $item = Get-ItemProperty -LiteralPath $script:JanusLocationRegKey -Name InstallDir -ErrorAction SilentlyContinue
+    if ($item) { return [string]$item.InstallDir }
+    return $null
+}
+
+function Get-JanusLocalRoot {
+    $saved = Get-JanusSavedLocalRoot
+    if ($saved) { return $saved }
+    return (Get-JanusDefaultLocalRoot)
+}
+
+function Set-JanusLocalRoot {
+    param([string]$Dir)
+    New-Item -Path $script:JanusLocationRegKey -Force | Out-Null
+    Set-ItemProperty -LiteralPath $script:JanusLocationRegKey -Name InstallDir -Value $Dir
+}
+
+function Clear-JanusLocalRoot {
+    Remove-Item -LiteralPath $script:JanusLocationRegKey -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+function Test-JanusUnderProgramFiles {
+    param([string]$Dir)
+    return $Dir.StartsWith($env:ProgramFiles, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-JanusInstallRoot {
+    # Install dir for install/update. Order: -Requested, saved location, existing default install,
+    # then an interactive choice (skipped when stdin is redirected, e.g. `janus rebuild`).
+    param([string]$Requested)
+
+    if ($Requested) {
+        $dir = $Requested.Trim().TrimEnd('\')
+        if ($dir -notmatch '^[A-Za-z]:\\.+') { throw "Install folder must be an absolute path with a drive letter: '$Requested'" }
+        return $dir
+    }
+    $saved = Get-JanusSavedLocalRoot
+    if ($saved) { return $saved }
+    $default = Get-JanusDefaultLocalRoot
+    if (Test-Path -LiteralPath (Join-Path $default 'Janus.exe')) { return $default }
+    if ([Console]::IsInputRedirected) { return $default }
+
+    $options = @{
+        '1' = Join-Path $env:LOCALAPPDATA 'Janus'
+        '2' = Join-Path $env:APPDATA 'Janus'
+        '3' = Join-Path $env:ProgramFiles 'Janus'
+    }
+    Write-Host 'Where should Janus be installed?'
+    Write-Host "  1) $($options['1'])  (default, no admin)"
+    Write-Host "  2) $($options['2'])"
+    Write-Host "  3) $($options['3'])  (needs admin)"
+    Write-Host '  4) Custom path'
+    $choice = (Read-Host 'Enter 1-4 [1]').Trim()
+    if ($choice -eq '') { $choice = '1' }
+    if ($choice -eq '4') {
+        $custom = (Read-Host 'Full path of the install folder (e.g. D:\Apps\Janus)').Trim().TrimEnd('\')
+        if ($custom -notmatch '^[A-Za-z]:\\.+') { throw "Custom path must be an absolute folder path, e.g. D:\Apps\Janus (got '$custom')." }
+        return $custom
+    }
+    if (-not $options.ContainsKey($choice)) { throw "Invalid choice '$choice' (use 1-4)." }
+    return $options[$choice]
 }
 
 function Get-JanusStagedExePath {
@@ -647,6 +714,10 @@ function Ensure-JanusLocalLayout {
     # when missing (an existing settings.json is never overwritten).
     $root = Get-JanusLocalRoot
     New-Item -ItemType Directory -Path $root -Force | Out-Null
+    if (Test-JanusUnderProgramFiles -Dir $root) {
+        # Program Files is admin-only for writes; the app runs as the user and must write settings/logs/data.
+        & icacls.exe $root /grant '*S-1-5-32-545:(OI)(CI)M' /T /C | Out-Null
+    }
     foreach ($bucket in @('infos', 'warnings', 'errors')) {
         New-Item -ItemType Directory -Path (Join-Path (Join-Path $root 'logs') $bucket) -Force | Out-Null
     }

@@ -61,6 +61,7 @@ else {
 
 # 3. Drop the base path from the user PATH.
 Remove-JanusUserPathEntry -Dir $root
+Clear-JanusLocalRoot
 
 # 4. hosts cleanup. All # janus-local entries, plus an exact 127.0.0.1 <name> line
 #    when --local-address was given explicitly.

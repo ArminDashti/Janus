@@ -11,6 +11,7 @@
 param(
     [string]$LocalAddress,
     [string]$ParentLocalAppData,
+    [string]$InstallDir,
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest
 )
 
@@ -36,14 +37,17 @@ if ($LocalAddress -and $LocalAddress -notmatch '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za
 }
 
 $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
-$root = Get-JanusLocalRoot
+$root = Resolve-JanusInstallRoot -Requested $InstallDir
 $exe = Join-Path $root 'Janus.exe'
+$previousRoot = Get-JanusSavedLocalRoot
 
-# Hosts editing needs Administrator: restart the whole script elevated; fail fast if UAC is declined.
-if ($LocalAddress -and -not (Test-JanusAdmin)) {
-    Write-Host 'Hosts file edit requested - relaunching as Administrator (UAC)...' -ForegroundColor Yellow
+# Hosts editing and Program Files need Administrator: restart the whole script elevated; fail fast if UAC is declined.
+$needsAdmin = $LocalAddress -or (Test-JanusUnderProgramFiles -Dir $root)
+if ($needsAdmin -and -not (Test-JanusAdmin)) {
+    Write-Host 'Administrator rights needed (hosts edit or Program Files) - relaunching as Administrator (UAC)...' -ForegroundColor Yellow
     $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath),
-        '-LocalAddress', $LocalAddress, '-ParentLocalAppData', ('"{0}"' -f $env:LOCALAPPDATA))
+        '-InstallDir', ('"{0}"' -f $root), '-ParentLocalAppData', ('"{0}"' -f $env:LOCALAPPDATA))
+    if ($LocalAddress) { $argList += @('-LocalAddress', $LocalAddress) }
     try {
         $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList -Wait -PassThru
         exit $p.ExitCode
@@ -54,6 +58,8 @@ if ($LocalAddress -and -not (Test-JanusAdmin)) {
         exit 1
     }
 }
+
+Set-JanusLocalRoot -Dir $root
 
 # 1. Build FIRST: a build failure must not disturb the installed app.
 $staged = Get-JanusStagedExePath
@@ -97,6 +103,7 @@ Copy-JanusLocalFileWithRetry -Source $staged -Destination $exe
 Write-Host "Installed: $exe" -ForegroundColor Green
 
 # 5. Make `janus ...` resolvable: user PATH entry (idempotent, no admin needed).
+if ($previousRoot -and ($previousRoot -ne $root)) { Remove-JanusUserPathEntry -Dir $previousRoot }
 Add-JanusUserPathEntry -Dir $root
 
 # 6. hosts: append 127.0.0.1 <name> tagged with # janus-local (skipped if already mapped).
