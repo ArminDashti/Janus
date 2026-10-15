@@ -77,6 +77,12 @@ Static files:
 - `/logos/*` — platform logos from `resources/logos/`
 - `/branding/*` — branding images from `resources/branding/`
 
+## Skill store
+
+Skills are mastered in `<app root>\Skills` (`%LOCALAPPDATA%\Janus\Skills` when installed).
+Sync on app start and on the Sync button copies store skills over every platform and
+project copy. Self-check: `npx tsx scripts/check-skill-store.ts`.
+
 ## API overview
 
 - `GET /api/health` — liveness check

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { FolderGit2, RefreshCw, Search } from 'lucide-react'
 import type { ProjectMatrixRow, ResourceType } from '@shared/types'
 import { Toggle } from '@renderer/components/Toggle'
@@ -16,6 +17,8 @@ interface ProjectPanelProps {
   onRefresh?: () => void
   /** Fired after unassigning the last project (skill may leave the list). */
   onRemovedFromAllProjects?: () => void
+  /** Panel collapse toggle, rendered at the end of the header row. */
+  collapseToggle?: ReactNode
 }
 
 /**
@@ -27,7 +30,8 @@ export function ProjectPanel({
   resourceName,
   resourceLabel,
   onRefresh,
-  onRemovedFromAllProjects
+  onRemovedFromAllProjects,
+  collapseToggle
 }: ProjectPanelProps) {
   const [rows, setRows] = useState<ProjectMatrixRow[]>([])
   const [pending, setPending] = useState<Record<string, boolean>>({})
@@ -79,15 +83,25 @@ export function ProjectPanel({
     [rows, effectiveAssigned]
   )
 
-  const assignAll = async () => {
+  const setAllAssigned = async (next: boolean) => {
     if (!resourceName) return
-    const projectIds = rows.filter((r) => !r.platformId).map((r) => r.projectId)
+    if (!next) {
+      const confirmed = await showMessage({
+        title: `Remove ${resourceLabel}`,
+        message: `Unassigning every project removes the ${resourceLabel} from all projects and it will disappear from the list.`,
+        confirm: true,
+        type: 'error'
+      })
+      if (!confirmed) return
+    }
+    const projectIds = next ? rows.filter((r) => !r.platformId).map((r) => r.projectId) : []
     setAssigningAll(true)
     try {
       await window.agentManager.applyProjectAssignment(resourceType, resourceName, projectIds)
-      await window.agentManager.setMandatory(resourceType, resourceName, true)
+      await window.agentManager.setMandatory(resourceType, resourceName, next)
       onRefresh?.()
-      setRows((prev) => prev.map((r) => (r.platformId ? r : { ...r, assigned: true })))
+      setRows((prev) => prev.map((r) => (r.platformId ? r : { ...r, assigned: next })))
+      if (!next) onRemovedFromAllProjects?.()
     } catch (e) {
       await showMessage({
         message: e instanceof Error ? e.message : 'Assign all failed',
@@ -209,15 +223,19 @@ export function ProjectPanel({
           <h2 className="text-xs font-medium text-zinc-400">
             Projects · {assignedCount}/{rows.length}
           </h2>
-          <button
-            type="button"
-            onClick={() => void assignAll()}
-            disabled={!resourceName || assigningAll || allProjectsAssigned}
-            title={`Assign this ${resourceLabel} to every project`}
-            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {assigningAll ? 'Assigning…' : 'Assign all'}
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400">
+              {assigningAll ? 'Saving…' : 'Assign all'}
+            </span>
+            <Toggle
+              checked={allProjectsAssigned}
+              onChange={(next) => void setAllAssigned(next)}
+              disabled={!resourceName || assigningAll || !rows.some((r) => !r.platformId)}
+              ariaLabel="Assign all projects"
+              title={`Assign this ${resourceLabel} to every project`}
+            />
+            {collapseToggle}
+          </div>
         </div>
         <div className="relative mt-2">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500" />

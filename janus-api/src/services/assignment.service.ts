@@ -65,7 +65,8 @@ export class AssignmentService {
   async assignToProject(
     resource: ScannedResource,
     resourceType: ResourceType,
-    projectId: string
+    projectId: string,
+    overwrite = false
   ): Promise<void> {
     const settings = settingsStore.get()
     const project = settings.projectRoots.flatMap((r) => r.projects).find((p) => p.id === projectId)
@@ -85,7 +86,7 @@ export class AssignmentService {
         label: `${project.name}`,
         platformId: platform.id
       }
-      await this.assignResource(resource, resourceType, target)
+      await this.assignResource(resource, resourceType, target, overwrite)
     }
   }
 
@@ -143,7 +144,8 @@ export class AssignmentService {
   async assignToPlatformGlobal(
     resource: ScannedResource,
     resourceType: ResourceType,
-    platformId: PlatformId
+    platformId: PlatformId,
+    overwrite = false
   ): Promise<void> {
     if (resourceType !== 'skill') {
       throw new Error('Only skills can be assigned to an IDE/CLI global folder')
@@ -159,7 +161,7 @@ export class AssignmentService {
       label: adapter.label,
       platformId
     }
-    await this.assignResource(resource, resourceType, target)
+    await this.assignResource(resource, resourceType, target, overwrite)
   }
 
   /** Remove a skill from an IDE/CLI global folder. */
@@ -183,11 +185,12 @@ export class AssignmentService {
   private async assignResource(
     resource: ScannedResource,
     resourceType: ResourceType,
-    target: AssignTarget
+    target: AssignTarget,
+    overwrite = false
   ): Promise<void> {
     switch (resourceType) {
       case 'skill':
-        await this.assignSkill(resource as SkillResource, target)
+        await this.assignSkill(resource as SkillResource, target, overwrite)
         break
       case 'subAgent':
         await this.assignSubAgent(resource as SubAgentResource, target)
@@ -197,14 +200,15 @@ export class AssignmentService {
     }
   }
 
-  async assignSkill(skill: SkillResource, target: AssignTarget): Promise<void> {
+  /** overwrite=true: the Janus store wins (Sync); false: refuse to clobber a different skill. */
+  async assignSkill(skill: SkillResource, target: AssignTarget, overwrite = false): Promise<void> {
     const adapter = getAdapter(target.platformId)
     if (!adapter) return
     const settings = settingsStore.get()
     const destRoot = this.resolvePaths(adapter, target, settings).skillsDirs[0]
     const destPath = join(destRoot, skill.name)
     const destSkillMd = join(destPath, 'SKILL.md')
-    if (existsSync(destSkillMd)) {
+    if (!overwrite && existsSync(destSkillMd)) {
       const existingText = await fileService.readText(destSkillMd)
       const existingHash = skillContentHash(existingText)
       if (existingHash !== skill.contentHash) {

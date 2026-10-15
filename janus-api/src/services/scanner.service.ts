@@ -22,6 +22,7 @@ import type { PlatformAdapter, PlatformPaths } from '../platforms/types'
 import { supportsResource } from '../platforms/types'
 import { probeMcpServers } from './mcp-probe.service'
 import { agentDebugLog } from './debug-log'
+import { getSkillsStorePath } from '../app-paths'
 import { seedSkillContentHashes } from './skill-sync.service'
 import { reconcileSharedUuids } from './uuid-reconcile.service'
 import { reconcileSkillNames } from './skill-name-sync.service'
@@ -36,6 +37,8 @@ export interface ScanAllOptions {
   /** Spawn MCP processes to check connectivity. Expensive; default false. */
   probeMcps?: boolean
 }
+
+const STORE_SOURCE: ResourceSource = { type: 'local', id: 'janus', label: 'Janus' }
 
 /** A cached scan older than this triggers a background refresh on read. */
 const READ_STALE_MS = 30_000
@@ -169,6 +172,9 @@ export class ScannerService {
       mcps: [],
       subAgents: []
     }
+
+    // Janus store is the canonical skill list; platform/project copies are read below.
+    await this.pushSkillRoots(getSkillsStorePath(), STORE_SOURCE, settings, result)
 
     for (const platform of settings.platforms) {
       if (!platform.enabled) continue
@@ -328,34 +334,7 @@ export class ScannerService {
 
     if (canScan('skill') && supportsResource(adapter, 'skill')) {
       for (const skillsDir of paths.skillsDirs) {
-        const skillRoots = await this.findSkillRoots(skillsDir)
-        for (const dir of skillRoots) {
-          const skillMd = join(dir, 'SKILL.md')
-          const files = await fileService.listFilesRecursive(dir)
-          const skillMdText = await fileService.readText(skillMd)
-          const { frontmatter } = parseFrontmatter(skillMdText)
-          const meta = extractResourceMeta(frontmatter)
-          const structure = validateSkillStructure(frontmatter)
-          const id = meta.uuid || `pending:${stableId(source.id, dir)}`
-          const relativeName = dir
-            .slice(skillsDir.length)
-            .replace(/^[/\\]+/, '')
-            .replace(/\\/g, '/')
-          result.skills.push({
-            id,
-            name: relativeName || basename(dir),
-            rootPath: dir,
-            skillMdPath: skillMd,
-            contentHash: skillContentHash(skillMdText),
-            uuid: meta.uuid ?? '',
-            lastUpdatedAt: metaTimestampToIso(meta.last_updated),
-            structureOk: structure.ok,
-            structureWarning: structure.ok ? undefined : structure.reason,
-            files,
-            source,
-            enabled: settings.assignments.skills[id]?.includes(source.id) ?? true
-          })
-        }
+        await this.pushSkillRoots(skillsDir, source, settings, result)
       }
     }
 
@@ -416,6 +395,42 @@ export class ScannerService {
       }
     }
   }
+  /** Add every skill folder under skillsDir to result.skills (names are relative to skillsDir). */
+  private async pushSkillRoots(
+    skillsDir: string,
+    source: ResourceSource,
+    settings: AppSettings,
+    result: ScanResult
+  ): Promise<void> {
+    for (const dir of await this.findSkillRoots(skillsDir)) {
+      const skillMd = join(dir, 'SKILL.md')
+      const files = await fileService.listFilesRecursive(dir)
+      const skillMdText = await fileService.readText(skillMd)
+      const { frontmatter } = parseFrontmatter(skillMdText)
+      const meta = extractResourceMeta(frontmatter)
+      const structure = validateSkillStructure(frontmatter)
+      const id = meta.uuid || `pending:${stableId(source.id, dir)}`
+      const relativeName = dir
+        .slice(skillsDir.length)
+        .replace(/^[/\\]+/, '')
+        .replace(/\\/g, '/')
+      result.skills.push({
+        id,
+        name: relativeName || basename(dir),
+        rootPath: dir,
+        skillMdPath: skillMd,
+        contentHash: skillContentHash(skillMdText),
+        uuid: meta.uuid ?? '',
+        lastUpdatedAt: metaTimestampToIso(meta.last_updated),
+        structureOk: structure.ok,
+        structureWarning: structure.ok ? undefined : structure.reason,
+        files,
+        source,
+        enabled: settings.assignments.skills[id]?.includes(source.id) ?? true
+      })
+    }
+  }
+
   /**
    * Find every skill root under a skills directory, including nested folders.
    * A skill root is any directory that contains a SKILL.md file.

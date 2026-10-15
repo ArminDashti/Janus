@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FolderGit2 } from 'lucide-react'
 import type { ProjectInfo, ResourceGroupSummary, UiSearchField } from '@shared/types'
 import { BrowserColumn, browserRowClass } from '@renderer/components/layout/BrowserColumn'
@@ -16,6 +16,7 @@ interface ProjectListProps {
   onSelect: (id: string) => void
   search: string
   onSearch: (v: string) => void
+  collapseToggle?: ReactNode
 }
 
 function ProjectList({
@@ -23,7 +24,8 @@ function ProjectList({
   selectedId,
   onSelect,
   search,
-  onSearch
+  onSearch,
+  collapseToggle
 }: ProjectListProps) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const q = search.trim().toLowerCase()
@@ -42,6 +44,7 @@ function ProjectList({
     <BrowserColumn
       title="Projects"
       countLabel={String(projects.length)}
+      actions={collapseToggle}
       search={search}
       onSearch={onSearch}
       searchPlaceholder="Search projects..."
@@ -162,16 +165,18 @@ export function ProjectsPage() {
         autoSaveId="projects-three-panel-v1"
         defaultLeftSize={22}
         defaultMiddleSize={24}
-        left={
+        titles={{ left: 'Projects', middle: 'Skills', right: 'Skill' }}
+        left={(collapseToggle) => (
           <ProjectList
             projects={projects}
             selectedId={selectedProjectId}
             onSelect={setSelectedProjectId}
             search={search}
             onSearch={setSearch}
+            collapseToggle={collapseToggle}
           />
-        }
-        middle={
+        )}
+        middle={(collapseToggle) => (
           <SkillPanel
             projectId={selectedProjectId}
             projectLabel={selectedProject?.name ?? 'project'}
@@ -181,9 +186,12 @@ export function ProjectsPage() {
             onSelectSkill={setSelectedSkill}
             onSkillsChange={() => void loadSkills({ soft: true })}
             onRefresh={() => void refreshScan()}
+            collapseToggle={collapseToggle}
           />
-        }
-        right={<SkillContent skillName={selectedSkill} />}
+        )}
+        right={(collapseToggle) => (
+          <SkillContent skillName={selectedSkill} collapseToggle={collapseToggle} />
+        )}
       />
     </div>
   )

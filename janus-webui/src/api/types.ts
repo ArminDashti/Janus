@@ -59,6 +59,7 @@ export interface AgentManagerApi {
     newName: string
   ) => Promise<boolean>
   deleteResource: (resourceType: Exclude<ResourceType, 'mcp'>, resourceName: string) => Promise<boolean>
+  deleteSkillFile: (skillName: string, filePath: string) => Promise<boolean>
   createResource: (
     resourceType: 'skill' | 'subAgent',
     name: string,

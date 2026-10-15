@@ -1,5 +1,5 @@
 import { existsSync } from 'fs'
-import { dirname, join, resolve } from 'path'
+import { basename, dirname, join, relative, resolve } from 'path'
 import { getSkillsStorePath } from '../app-paths'
 import { skillContentHash } from '../shared/utils'
 import { getAdapter } from '../platforms'
@@ -10,6 +10,7 @@ const syncingRoots = new Set<string>()
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 /** Previous hash captured at first change in a debounce window (per skill root). */
 const pendingPreviousHash = new Map<string, string | undefined>()
+const pendingRemovals = new Map<string, ReturnType<typeof setTimeout>>()
 /** Last-known SKILL.md hash per skill root (normalized path). */
 const contentHashByRoot = new Map<string, string>()
 let paused = false
@@ -213,6 +214,41 @@ export function scheduleSkillSyncFromPath(changedPath: string): void {
       pendingTimers.delete(key)
       pendingPreviousHash.delete(key)
       void syncSkillFromResolved(resolved.skillName, resolved.sourceRoot, previousHash)
+    }, 800)
+  )
+}
+
+async function removeSkillCopies(skillName: string): Promise<void> {
+  for (const skillsDir of allSkillsDirs()) {
+    const dest = join(skillsDir, ...skillName.split('/'))
+    if (!existsSync(join(dest, 'SKILL.md'))) continue
+    await fileService.removePath(dest)
+  }
+}
+
+/**
+ * Store skill deleted outside the app: remove its same-name copies (platform/project).
+ * ponytail: a 800ms settle window guards renames (old folder gone, new one appears);
+ * a rename that lands after the window would still drop the old copies.
+ */
+export function scheduleSkillRemovalFromPath(removedPath: string): void {
+  if (paused) return
+  const storeDir = resolve(getSkillsStorePath())
+  const abs = resolve(removedPath)
+  const skillDir = basename(abs).toLowerCase() === 'skill.md' ? dirname(abs) : abs
+  if (!normalizePath(skillDir).startsWith(`${normalizePath(storeDir)}/`)) return
+
+  const skillName = relative(storeDir, skillDir).replace(/\\/g, '/')
+  if (!skillName) return
+
+  const existing = pendingRemovals.get(skillName)
+  if (existing) clearTimeout(existing)
+  pendingRemovals.set(
+    skillName,
+    setTimeout(() => {
+      pendingRemovals.delete(skillName)
+      if (paused || existsSync(join(storeDir, ...skillName.split('/'), 'SKILL.md'))) return
+      void removeSkillCopies(skillName)
     }, 800)
   )
 }

@@ -6,7 +6,8 @@ import { importedProjectsStore } from './imported-projects-store'
 import { normalizeScanPath, rescanProjectRoots } from './project-root-rescan.service'
 import { settingsStore } from './settings-store'
 import { getAdapter } from '../platforms'
-import { scheduleSkillSyncFromPath } from './skill-sync.service'
+import { getSkillsStorePath } from '../app-paths'
+import { scheduleSkillRemovalFromPath, scheduleSkillSyncFromPath } from './skill-sync.service'
 import { scheduleSkillReferenceSync } from './skill-reference.service'
 import { notifyScanChanged } from '../events'
 
@@ -36,6 +37,8 @@ export function onProjectRootsAdded(listener: ProjectRootsAddedListener): () => 
 function collectWatchPaths(): string[] {
   const settings = settingsStore.get()
   const paths = new Set<string>()
+  const storePath = getSkillsStorePath()
+  if (existsSync(storePath)) paths.add(storePath)
 
   for (const platform of settings.platforms) {
     if (!platform.enabled) continue
@@ -175,6 +178,7 @@ export function startFileWatcher(): void {
 
       const onUnlink = (removedPath: string): void => {
         scheduleSkillReferenceSync(removedPath)
+        scheduleSkillRemovalFromPath(removedPath)
         notifyUnlink()
       }
 

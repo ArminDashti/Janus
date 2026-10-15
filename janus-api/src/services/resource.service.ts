@@ -30,6 +30,7 @@ import { withQuietWatch } from './watcher.service'
 import { withSkillSyncPaused } from './skill-sync.service'
 import { getAdapter } from '../platforms'
 import { agentDebugLog } from './debug-log'
+import { getSkillsStorePath } from '../app-paths'
 import type { PlatformPaths } from '../platforms/types'
 
 type ScannedResource = SkillResource | SubAgentResource
@@ -120,10 +121,11 @@ function groupByName(
 }
 
 function pickCanonical(instances: ScannedResource[]): ScannedResource {
-  const project = instances.find((i) => i.source.type === 'project')
-  if (project) return project
+  // Janus store (type 'local') is the master copy; project/platform copies are views of it.
   const local = instances.find((i) => i.source.type === 'local')
-  return local ?? instances[0]
+  if (local) return local
+  const project = instances.find((i) => i.source.type === 'project')
+  return project ?? instances[0]
 }
 
 function collectAssignedProjectIds(instances: ScannedResource[]): string[] {
@@ -617,6 +619,26 @@ export class ResourceService {
     })
   }
 
+  /** Soft-deletes one file of a skill (moved to trash). SKILL.md is not deletable. */
+  async deleteSkillFile(scan: ScanResult, skillName: string, filePath: string): Promise<void> {
+    await withInAppFsOp(async () => {
+      const canonical = this.findCanonicalInstance(scan, 'skill', skillName) as SkillResource | null
+      if (!canonical) throw new Error(`Resource not found: ${skillName}`)
+
+      const target = resolve(filePath)
+      if (!canonical.files.some((f) => resolve(f) === target)) {
+        throw new Error('File does not belong to this skill')
+      }
+      if (basename(target) === 'SKILL.md') throw new Error('SKILL.md cannot be deleted')
+
+      await fileService.moveToTrash(target, 'skills', skillName, {
+        resourceType: 'skill',
+        sourceType: canonical.source.type,
+        sourceId: canonical.source.id
+      })
+    })
+  }
+
   async createResource(
     resourceType: 'skill' | 'subAgent',
     name: string,
@@ -634,7 +656,7 @@ export class ResourceService {
 
     const content = resourceType === 'skill' ? skillTemplate(safeName) : subAgentTemplate(safeName)
 
-    await this.writeRepoBankResource(resourceType, safeName, content)
+    await this.writeCanonicalResource(resourceType, safeName, content)
 
     if (includeGlobal) {
       await this.seedResourceInGlobal(resourceType, safeName, content)
@@ -705,13 +727,16 @@ export class ResourceService {
     }
   }
 
-  private async writeRepoBankResource(
+  private async writeCanonicalResource(
     resourceType: 'skill' | 'subAgent',
     name: string,
     content: string
   ): Promise<void> {
-    const relativePath = resourceType === 'skill' ? 'SKILL.md' : `${name}.md`
-    await repoBankService.writeResourceFile(resourceType, name, relativePath, content)
+    if (resourceType === 'skill') {
+      await fileService.writeText(join(getSkillsStorePath(), name, 'SKILL.md'), content)
+      return
+    }
+    await repoBankService.writeResourceFile(resourceType, name, `${name}.md`, content)
   }
 
   async renameResource(
@@ -827,6 +852,7 @@ export class ResourceService {
     resourceType: 'skill' | 'subAgent',
     name: string
   ): boolean {
+    if (resourceType === 'skill' && existsSync(join(getSkillsStorePath(), name))) return true
     for (const { paths, platformId } of iterateProjectPlatformPaths(settings)) {
       if (CURSOR_ONLY_RESOURCES.includes(resourceType) && platformId !== 'cursor') continue
       switch (resourceType) {

@@ -1,11 +1,14 @@
 import { existsSync } from 'fs'
+import { join } from 'path'
 import type {
   PlatformConfig,
+  PlatformId,
   ResourceType,
   ScanResult,
   SkillResource,
   SubAgentResource
 } from '../shared/types'
+import { getSkillsStorePath } from '../app-paths'
 import { assignmentService } from './assignment.service'
 import { fileService } from './file.service'
 import { platformCleanupService } from './platform-cleanup.service'
@@ -32,21 +35,47 @@ function resourceKey(item: ScannedResource): string {
 }
 
 /**
- * Ensure enabled platform folders exist in all projects, then re-copy each
- * project-assigned resource into every currently enabled platform.
+ * Import platform/project skills into the store. For each skill name the newest copy wins
+ * (SKILL.md mtime); the store is replaced only when that copy is strictly newer.
+ * ponytail: mtime is the recency signal; frontmatter last_updated is stamped once and never refreshed.
+ */
+export async function importNewestSkillsIntoStore(scan: ScanResult): Promise<void> {
+  const store = getSkillsStorePath()
+  const newest = new Map<string, { skill: SkillResource; mtime: number }>()
+  for (const skill of scan.skills) {
+    if (skill.source.type === 'local') continue
+    const mtime = (await fileService.getMtime(join(skill.rootPath, 'SKILL.md'))) ?? 0
+    if (mtime > (newest.get(skill.name)?.mtime ?? -1)) newest.set(skill.name, { skill, mtime })
+  }
+  for (const [name, { skill, mtime }] of newest) {
+    const dest = join(store, ...name.split('/'))
+    const storeMtime = (await fileService.getMtime(join(dest, 'SKILL.md'))) ?? -1
+    if (storeMtime >= mtime) continue
+    await fileService.removePath(dest)
+    await fileService.copyDirectory(skill.rootPath, dest)
+  }
+}
+
+/**
+ * Janus store is the source of truth. Ensure enabled platform folders exist, import the newest
+ * copy of each skill into the store, then overwrite every copy with the store version.
+ * Runs on Sync click and on app start.
  */
 export async function syncEnabledPlatformsToProjects(): Promise<void> {
-  const settings = settingsStore.get()
-  const projectPaths = settings.projectRoots.flatMap((r) => r.projects.map((p) => p.path))
-  if (projectPaths.length === 0) {
-    // Still ensure nothing to do when no projects — bootstrap is a no-op.
-    await projectBootstrapService.bootstrapEnabledPlatformsForAllProjects()
-    return
-  }
-
   await projectBootstrapService.bootstrapEnabledPlatformsForAllProjects()
 
-  const scan = await scannerService.scanAll(settingsStore.get())
+  let scan = await scannerService.scanAll(settingsStore.get())
+  await importNewestSkillsIntoStore(scan)
+  scan = await scannerService.scanAll(settingsStore.get())
+
+  // IDE/CLI global copies: refresh each one that exists from the store.
+  for (const copy of scan.skills) {
+    if (copy.source.type !== 'platform') continue
+    const canonical = scan.skills.find((s) => s.source.type === 'local' && s.name === copy.name)
+    if (canonical) {
+      await assignmentService.assignToPlatformGlobal(canonical, 'skill', copy.source.id as PlatformId, true)
+    }
+  }
 
   for (const resourceType of FILL_TYPES) {
     // Dedupe: one assign per (resource name, projectId)
@@ -61,19 +90,17 @@ export async function syncEnabledPlatformsToProjects(): Promise<void> {
       if (seen.has(dedupeKey)) continue
       seen.add(dedupeKey)
 
-      // Prefer a project instance as canonical source for copying
-      const sameName = getItems(scan, resourceType).filter((candidate) => {
-        if (resourceKey(candidate) !== name) return false
-        return true
-      })
+      // Janus store copy is canonical; project/platform copies are overwritten from it.
+      const sameName = getItems(scan, resourceType).filter((candidate) => resourceKey(candidate) === name)
       const canonical =
+        sameName.find((c) => c.source.type === 'local') ??
         sameName.find((c) => c.source.type === 'project' && c.source.id === projectId) ??
         sameName.find((c) => c.source.type === 'project') ??
         sameName.find((c) => c.source.type === 'platform') ??
         sameName[0]
 
       if (!canonical) continue
-      await assignmentService.assignToProject(canonical, resourceType, projectId)
+      await assignmentService.assignToProject(canonical, resourceType, projectId, true)
     }
   }
 }

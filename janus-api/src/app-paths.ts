@@ -73,7 +73,7 @@ export function ensurePortableLayout(): void {
   migrateLegacyDataDir(root)
   cleanupLegacyPortableDirs(root)
 
-  const dirs = ['.trash', '.trash/skills', '.trash/subAgents']
+  const dirs = ['.trash', '.trash/skills', '.trash/subAgents', 'Skills']
 
   for (const dir of dirs) {
     const full = join(root, dir)
@@ -133,6 +133,11 @@ export function getBrandingPath(): string {
 
 export function getSettingsPath(): string {
   return resolveFromAppRoot('settings.json')
+}
+
+/** Janus-owned master copy of every skill (%LOCALAPPDATA%\Janus\Skills in an install). */
+export function getSkillsStorePath(): string {
+  return resolveFromAppRoot('Skills')
 }
 
 export function getImportedProjectsPath(): string {

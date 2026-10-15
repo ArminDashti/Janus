@@ -7,6 +7,7 @@ import { addSseClient, onScanChanged } from './events'
 import { registerRoutes } from './routes/index'
 import { rescanProjectRoots } from './services/project-root-rescan.service'
 import { resourceService } from './services/resource.service'
+import { syncEnabledPlatformsToProjects } from './services/platform-sync.service'
 import { applyStartupSetting } from './services/startup.service'
 import { importedProjectsStore } from './services/imported-projects-store'
 import { scannerService } from './services/scanner.service'
@@ -41,6 +42,12 @@ export async function startServer(): Promise<void> {
     }
   } catch (err) {
     console.error('startup: project roots rescan failed:', err)
+  }
+  // Janus store -> platform/project copies, same routine as the Sync button.
+  try {
+    await syncEnabledPlatformsToProjects()
+  } catch (err) {
+    console.error('startup: skill sync failed:', err)
   }
   startFileWatcher()
   // Keep the scan cache warm: refresh on watcher events (in-process) and on a

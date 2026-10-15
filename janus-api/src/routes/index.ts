@@ -23,7 +23,11 @@ import { projectBootstrapService } from '../services/project-bootstrap.service'
 import { normalizeScanPath, rescanProjectRoots } from '../services/project-root-rescan.service'
 import { resourceService } from '../services/resource.service'
 import { scannerService } from '../services/scanner.service'
-import { resolveSkillFromPath, syncSkillFromResolved } from '../services/skill-sync.service'
+import {
+  resolveSkillFromPath,
+  scheduleSkillSyncFromPath,
+  syncSkillFromResolved
+} from '../services/skill-sync.service'
 import { syncSkillReferences } from '../services/skill-reference.service'
 import { settingsStore } from '../services/settings-store'
 import { applyStartupSetting } from '../services/startup.service'
@@ -216,7 +220,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const startedAt = Date.now()
       agentDebugLog('B', 'routes/index.ts:sync', 'HTTP sync invoked', {})
       importedProjectsStore.pruneMissingOnDisk()
-      await syncSkillReferences()
+      // ponytail: reference cleanup can hit EPERM on locked folders; never let it block the store sync.
+      await syncSkillReferences().catch((err) => console.error('sync: skill references failed:', err))
       await syncEnabledPlatformsToProjects()
       const added = await rescanProjectRoots()
       if (added.length > 0) {
@@ -533,6 +538,24 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const settings = settingsStore.get()
       const scan = await scannerService.getScanForRead(settings)
       return resourceService.findCanonicalInstance(scan, resourceType, resourceName)
+    })
+  )
+
+  app.delete(
+    '/api/resources/skill/:resourceName/files',
+    route(async (request) => {
+      const { resourceName } = request.params as { resourceName: string }
+      const query = request.query as { path?: string }
+      if (!query.path) {
+        throw new Error('path query parameter is required')
+      }
+      const settings = settingsStore.get()
+      const scan = await scannerService.scanAll(settings)
+      await resourceService.deleteSkillFile(scan, resourceName, query.path)
+      // Propagate the removal to same-name clones (unlink events do not sync on their own).
+      scheduleSkillSyncFromPath(query.path)
+      await scannerService.refresh(settings)
+      return true
     })
   )
 

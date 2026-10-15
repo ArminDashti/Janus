@@ -157,6 +157,12 @@ export const agentManagerClient: AgentManagerApi = {
       method: 'DELETE'
     }),
 
+  deleteSkillFile: (skillName, filePath) =>
+    request<boolean>(
+      `/api/resources/skill/${encodeURIComponent(skillName)}/files?path=${encodeQuery(filePath)}`,
+      { method: 'DELETE' }
+    ),
+
   createResource: (resourceType, name, projectIds) =>
     request<boolean>(`/api/resources/${resourceType}`, {
       method: 'POST',

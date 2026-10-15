@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { File, FileCode, FileJson, FileText, Trash } from 'lucide-react'
 import type { ResourceGroupSummary, SkillResource, UiSearchField } from '@shared/types'
 import { cn } from '@renderer/lib/utils'
@@ -25,7 +26,7 @@ const CODE_EXTENSIONS = new Set([
   'yaml', 'yml', 'toml', 'jsonc', 'css', 'scss', 'html', 'sql', 'rb', 'go', 'rs'
 ])
 
-/** Icon for a skill file tab based on its extension. */
+/** Icon for a skill file based on its extension. */
 function fileIcon(path: string): typeof File {
   const ext = fileBaseName(path).split('.').pop()?.toLowerCase() ?? ''
   if (ext === 'md' || ext === 'mdx') return FileText
@@ -46,6 +47,7 @@ interface SkillListProps {
   onSearch: (v: string) => void
   searchField: UiSearchField
   onSearchFieldChange: (f: UiSearchField) => void
+  collapseToggle?: ReactNode
 }
 
 function SkillList({
@@ -57,7 +59,8 @@ function SkillList({
   search,
   onSearch,
   searchField,
-  onSearchFieldChange
+  onSearchFieldChange,
+  collapseToggle
 }: SkillListProps) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const shown = sortDir === 'asc' ? skills : [...skills].reverse()
@@ -66,6 +69,7 @@ function SkillList({
     <BrowserColumn
       title="Skills"
       countLabel={String(skills.length)}
+      actions={collapseToggle}
       search={search}
       onSearch={onSearch}
       searchPlaceholder="Search skills..."
@@ -118,13 +122,10 @@ function SkillList({
   )
 }
 
-// ─── Right: skill content ───────────────────────────────────────────────────
+// ─── Skill file state (shared by the Files panel and the content view) ─────
 
-interface SkillContentProps {
-  skillName: string | null
-}
-
-export function SkillContent({ skillName }: SkillContentProps) {
+/** Loads one skill and tracks which of its files is open. */
+function useSkillFile(skillName: string | null) {
   const [resource, setResource] = useState<SkillResource | null>(null)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [content, setContent] = useState('')
@@ -169,6 +170,12 @@ export function SkillContent({ skillName }: SkillContentProps) {
     setContent(await window.agentManager.readFile(path))
   }
 
+  const removeFile = async (path: string) => {
+    if (!skillName) return
+    await window.agentManager.deleteSkillFile(skillName, path)
+    await load(skillName)
+  }
+
   const saveFile = async (filePath: string, value: string) => {
     const confirmed = await showMessage({
       message: `Save changes to ${fileBaseName(filePath)}?`,
@@ -188,6 +195,116 @@ export function SkillContent({ skillName }: SkillContentProps) {
     }
   }
 
+  return {
+    resource,
+    selectedFile,
+    content,
+    setContent,
+    loading,
+    notFound,
+    openFile,
+    saveFile,
+    removeFile
+  }
+}
+
+type SkillFileState = ReturnType<typeof useSkillFile>
+
+// ─── Files panel: one row per file in the selected skill ───────────────────
+
+interface SkillFilesProps {
+  files: string[]
+  selectedFile: string | null
+  onSelect: (path: string) => void
+  onDelete: (path: string) => void
+  collapseToggle?: ReactNode
+}
+
+function SkillFiles({ files, selectedFile, onSelect, onDelete, collapseToggle }: SkillFilesProps) {
+  return (
+    <aside className="w-full h-full flex flex-col bg-surface">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+        <h2 className="text-sm font-semibold text-zinc-100">Files</h2>
+        <span className="text-[11px] leading-none px-1.5 py-1 rounded-md bg-zinc-800 text-zinc-400 tabular-nums">
+          {files.length}
+        </span>
+        {collapseToggle && <div className="ml-auto flex items-center gap-0.5">{collapseToggle}</div>}
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto pb-2">
+        {files.map((f) => {
+          const Icon = fileIcon(f)
+          const isSelected = f === selectedFile
+          const isSkillMd = fileBaseName(f) === 'SKILL.md'
+          return (
+            <div key={f} className={browserRowClass(isSelected)}>
+              <button
+                type="button"
+                onClick={() => onSelect(f)}
+                title={f}
+                className="flex-1 min-w-0 flex items-center gap-2 text-left px-2.5 py-1.5 text-[13px]"
+              >
+                <Icon size={12} className="shrink-0" />
+                <span className="truncate">{fileBaseName(f)}</span>
+              </button>
+              {!isSkillMd && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete(f)
+                  }}
+                  className={cn(
+                    'p-1.5 mr-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
+                    isSelected
+                      ? 'text-white/70 hover:text-white hover:bg-white/10'
+                      : 'text-zinc-600 hover:text-red-400 hover:bg-zinc-700/60'
+                  )}
+                  title={`Delete ${fileBaseName(f)}`}
+                >
+                  <Trash size={12} strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </aside>
+  )
+}
+
+// ─── Content: the open file ─────────────────────────────────────────────────
+
+/** Tab strip of a skill's files, used where no Files panel exists. */
+function SkillFileTabs({ file }: { file: SkillFileState }) {
+  const files = file.resource?.files ?? []
+  if (files.length <= 1) return null
+  return (
+    <div className="flex gap-1 px-2 py-1.5 border-b border-surface-border overflow-x-auto shrink-0 bg-surface">
+      {files.map((f) => {
+        const Icon = fileIcon(f)
+        return (
+          <button
+            key={f}
+            type="button"
+            onClick={() => void file.openFile(f)}
+            title={f}
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-1 text-[13px] rounded whitespace-nowrap transition-colors',
+              f === file.selectedFile
+                ? 'bg-blue-600/20 text-blue-300'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+            )}
+          >
+            <Icon size={12} className="shrink-0" />
+            {fileBaseName(f)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function SkillFileView({ skillName, file }: { skillName: string | null; file: SkillFileState }) {
   if (!skillName) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-2 text-center px-6">
@@ -197,7 +314,7 @@ export function SkillContent({ skillName }: SkillContentProps) {
     )
   }
 
-  if (loading) {
+  if (file.loading) {
     return (
       <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
         Loading skill content…
@@ -205,7 +322,7 @@ export function SkillContent({ skillName }: SkillContentProps) {
     )
   }
 
-  if (notFound || !resource) {
+  if (file.notFound || !file.resource) {
     return (
       <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
         Skill content not found
@@ -213,61 +330,72 @@ export function SkillContent({ skillName }: SkillContentProps) {
     )
   }
 
-  const files = resource.files ?? []
+  const { selectedFile, content } = file
   const editable =
     selectedFile != null && (isMarkdownFile(selectedFile) || selectedFile.endsWith('.py'))
 
   return (
-    <div className="h-full flex flex-col min-h-0">
-      {files.length > 1 && (
-        <div className="flex gap-1 px-2 py-1.5 border-b border-surface-border overflow-x-auto shrink-0 bg-surface">
-          {files.map((f) => {
-            const Icon = fileIcon(f)
-            return (
-              <button
-                key={f}
-                type="button"
-                onClick={() => void openFile(f)}
-                title={f}
-                className={cn(
-                  'inline-flex items-center gap-1 px-2 py-1 text-[13px] rounded whitespace-nowrap transition-colors',
-                  f === selectedFile
-                    ? 'bg-blue-600/20 text-blue-300'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                )}
-              >
-                <Icon size={12} className="shrink-0" />
-                {fileBaseName(f)}
-              </button>
-            )
-          })}
+    <div className="h-full min-h-0 overflow-hidden">
+      {!selectedFile ? (
+        <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
+          Select a file
         </div>
+      ) : editable ? (
+        <MarkdownEditor
+          key={selectedFile}
+          filePath={selectedFile}
+          value={content}
+          onChange={file.setContent}
+          onSave={(v) => file.saveFile(selectedFile, v)}
+        />
+      ) : (
+        <pre className="h-full overflow-auto text-xs text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-lg p-3 whitespace-pre-wrap break-words">
+          {content}
+        </pre>
       )}
+    </div>
+  )
+}
 
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {!selectedFile ? (
-          <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
-            Select a file
-          </div>
-        ) : editable ? (
-          <MarkdownEditor
-            key={selectedFile}
-            filePath={selectedFile}
-            value={content}
-            onChange={setContent}
-            onSave={(v) => saveFile(selectedFile, v)}
-          />
-        ) : (
-          <pre className="h-full overflow-auto text-xs text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-lg p-3 whitespace-pre-wrap break-words">
-            {content}
-          </pre>
-        )}
+interface SkillDocumentProps {
+  skillName: string | null
+  file: SkillFileState
+  collapseToggle?: ReactNode
+  /** Optional strip rendered above the file content. */
+  children?: ReactNode
+}
+
+function SkillDocument({ skillName, file, collapseToggle, children }: SkillDocumentProps) {
+  return (
+    <div className="h-full flex flex-col min-h-0">
+      <div className="flex justify-end px-2 py-1.5 border-b border-surface-border shrink-0 bg-surface">
+        {collapseToggle}
+      </div>
+      {children}
+      <div className="flex-1 min-h-0">
+        <SkillFileView skillName={skillName} file={file} />
       </div>
     </div>
   )
 }
 
-// ─── Main SkillsPage: three-pane layout ─────────────────────────────────────
+/** Right panel used by the Projects page: skill content with its file tabs. */
+export function SkillContent({
+  skillName,
+  collapseToggle
+}: {
+  skillName: string | null
+  collapseToggle?: ReactNode
+}) {
+  const file = useSkillFile(skillName)
+  return (
+    <SkillDocument skillName={skillName} file={file} collapseToggle={collapseToggle}>
+      <SkillFileTabs file={file} />
+    </SkillDocument>
+  )
+}
+
+// ─── Main SkillsPage: three-pane layout (+ Files panel when a skill has files) ─
 
 export function SkillsPage() {
   const { refreshScan } = useAppStore()
@@ -276,6 +404,9 @@ export function SkillsPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [searchField, setSearchField] = useState<UiSearchField>('name')
+  const skillFile = useSkillFile(selected)
+  const files = skillFile.resource?.files ?? []
+  const showFiles = files.length > 1
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     const soft = opts?.soft && skills.length > 0
@@ -345,13 +476,35 @@ export function SkillsPage() {
     [selected, load, refreshScan]
   )
 
+  const handleDeleteFile = async (path: string) => {
+    const confirmed = await showMessage({
+      message: `Delete "${fileBaseName(path)}"? It is kept under .trash.`,
+      confirm: true,
+      type: 'error',
+      title: 'Delete file'
+    })
+    if (!confirmed) return
+    try {
+      await skillFile.removeFile(path)
+      refreshScan()
+    } catch (e) {
+      await showMessage({
+        message: e instanceof Error ? e.message : 'Delete failed',
+        type: 'error'
+      })
+    }
+  }
+
+  // Separate key and autosave id: the panel set differs, so layouts must not be shared.
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       <ThreePanelLayout
-        autoSaveId="skills-three-panel-v2"
+        key={showFiles ? 'with-files' : 'without-files'}
+        autoSaveId={showFiles ? 'skills-files-three-panel-v1' : 'skills-three-panel-v2'}
         defaultLeftSize={22}
         defaultMiddleSize={24}
-        left={
+        titles={{ left: 'Skills', middle: 'Projects', files: 'Files', right: 'Skill' }}
+        left={(collapseToggle) => (
           <SkillList
             skills={filtered}
             loading={loading}
@@ -362,9 +515,10 @@ export function SkillsPage() {
             onSearch={setSearch}
             searchField={searchField}
             onSearchFieldChange={setSearchField}
+            collapseToggle={collapseToggle}
           />
-        }
-        middle={
+        )}
+        middle={(collapseToggle) => (
           <ProjectPanel
             resourceType="skill"
             resourceName={selected}
@@ -374,9 +528,29 @@ export function SkillsPage() {
               setSelected(null)
               void load({ soft: true })
             }}
+            collapseToggle={collapseToggle}
           />
+        )}
+        files={
+          showFiles
+            ? (collapseToggle) => (
+                <SkillFiles
+                  files={files}
+                  selectedFile={skillFile.selectedFile}
+                  onSelect={(path) => void skillFile.openFile(path)}
+                  onDelete={(path) => void handleDeleteFile(path)}
+                  collapseToggle={collapseToggle}
+                />
+              )
+            : undefined
         }
-        right={<SkillContent skillName={selected} />}
+        right={(collapseToggle) => (
+          <SkillDocument
+            skillName={selected}
+            file={skillFile}
+            collapseToggle={collapseToggle}
+          />
+        )}
       />
     </div>
   )

@@ -3,6 +3,11 @@
 Responsibility: propagate the latest version of every canonical resource
 (skill, sub-agent) into all enabled IDE/CLI locations, globally and per project.
 
+Skills: the Janus store `%LOCALAPPDATA%\Janus\Skills` (`getSkillsStorePath()`) is the
+master copy. Platform and project skill folders are copies. Sync (Sync button, boot,
+`PUT /api/settings`) first imports skills missing from the store (never overwriting
+store skills), then overwrites every existing copy from the store.
+
 ## Backend (`janus-api`)
 
 - `services/platform-sync.service.ts`

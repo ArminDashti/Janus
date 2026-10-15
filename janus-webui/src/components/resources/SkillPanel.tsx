@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FileText, RefreshCw, Search } from 'lucide-react'
 import type { ResourceGroupSummary } from '@shared/types'
 import { Toggle } from '@renderer/components/Toggle'
@@ -18,6 +18,8 @@ interface SkillPanelProps {
   onSelectSkill: (name: string) => void
   onSkillsChange: () => void
   onRefresh?: () => void
+  /** Panel collapse toggle, rendered at the end of the header row. */
+  collapseToggle?: ReactNode
 }
 
 /**
@@ -31,7 +33,8 @@ export function SkillPanel({
   selectedSkillName,
   onSelectSkill,
   onSkillsChange,
-  onRefresh
+  onRefresh,
+  collapseToggle
 }: SkillPanelProps) {
   const [pending, setPending] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState<string | null>(null)
@@ -114,11 +117,30 @@ export function SkillPanel({
     }
   }
 
-  const assignAll = async () => {
+  const setAllAssigned = async (next: boolean) => {
     if (!projectId) return
+    const assignedSkills = skills.filter((s) => s.assignedProjectIds.includes(projectId))
+    if (!next) {
+      const confirmed = await showMessage({
+        title: 'Remove skills',
+        message: `Unassigning every skill from this project. Skills used only by this project will disappear from the list.`,
+        confirm: true,
+        type: 'error'
+      })
+      if (!confirmed) return
+    }
     setAssigningAll(true)
     try {
-      await window.agentManager.assignAllSkillsToProject(projectId)
+      if (next) {
+        await window.agentManager.assignAllSkillsToProject(projectId)
+      } else {
+        for (const skill of assignedSkills) {
+          const name = skillDisplayName(skill.name)
+          const remaining = skill.assignedProjectIds.filter((id) => id !== projectId)
+          await window.agentManager.applyProjectAssignment('skill', name, remaining)
+          await window.agentManager.setMandatory('skill', name, false)
+        }
+      }
       onRefresh?.()
       onSkillsChange()
     } catch (e) {
@@ -150,15 +172,19 @@ export function SkillPanel({
           <h2 className="text-xs font-medium text-zinc-400">
             Skills · {assignedCount}/{skills.length}
           </h2>
-          <button
-            type="button"
-            onClick={() => void assignAll()}
-            disabled={!projectId || assigningAll || assignedCount === skills.length}
-            title={`Assign every skill to ${projectLabel}`}
-            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {assigningAll ? 'Assigning…' : 'Assign all'}
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400">
+              {assigningAll ? 'Saving…' : 'Assign all'}
+            </span>
+            <Toggle
+              checked={skills.length > 0 && assignedCount === skills.length}
+              onChange={(next) => void setAllAssigned(next)}
+              disabled={!projectId || assigningAll || skills.length === 0}
+              ariaLabel="Assign all skills"
+              title={`Assign every skill to ${projectLabel}`}
+            />
+            {collapseToggle}
+          </div>
         </div>
         <div className="relative mt-2">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500" />

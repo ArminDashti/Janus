@@ -128,6 +128,7 @@ unverified) or skip it. This keeps confident guesses out.
 - Refer to skills by their name, never by UUID.
 - Open Settings and About as modal pages in a standard window size, with fade-in and fade-out animation on both open and close.
 - After each task, briefly tell the user the result; omit any follow-up remark when none is needed.
+- Collapsible section toggles keep the title and count visible when collapsed (e.g. `Projects · 4/38`), sit on the same line as the title, and must both collapse and expand; bulk actions like Assign all use a toggle matching the other skill toggles.
 
 ## Learned Workspace Facts
 
@@ -136,3 +137,8 @@ unverified) or skip it. This keeps confident guesses out.
 - Rules, Hooks, and Instructions were removed from Janus.
 - A skill's folder name follows its name; renaming a skill in the .md editor renames its folder.
 - Unselecting a skill's last project shows a modal warning that the skill will be gone.
+- Janus install location is chosen at install time (AppData Local or Roaming, Program Files, or a custom folder) and saved in HKCU:\Software\Janus (InstallDir); updates reuse it, and Program Files installs need UAC.
+- Skills must be loaded from the Janus skill store; platform and project folders receive copies on Sync and on app start.
+- `janus reinstall` keeps settings.json and logs by default; `--remove-data=yes` wipes them after confirmation (or with `-y`).
+- Skills with the same name but different content: Janus always keeps the newer version.
+- Saving a skill in the editor applies the change to all of its copies immediately.
