@@ -7,6 +7,7 @@ import { normalizeScanPath, rescanProjectRoots } from './project-root-rescan.ser
 import { settingsStore } from './settings-store'
 import { getAdapter } from '../platforms'
 import { scheduleSkillSyncFromPath } from './skill-sync.service'
+import { scheduleSkillReferenceSync } from './skill-reference.service'
 import { notifyScanChanged } from '../events'
 
 let watcher: ReturnType<typeof watch> | null = null
@@ -168,10 +169,12 @@ export function startFileWatcher(): void {
 
       const onAddOrChange = (changedPath: string): void => {
         scheduleSkillSyncFromPath(changedPath)
+        scheduleSkillReferenceSync(changedPath)
         notifyChange()
       }
 
-      const onUnlink = (): void => {
+      const onUnlink = (removedPath: string): void => {
+        scheduleSkillReferenceSync(removedPath)
         notifyUnlink()
       }
 
@@ -196,6 +199,9 @@ export function startFileWatcher(): void {
       rootsWatcher.on('unlinkDir', () => scheduleRootsRescan())
     }
   }
+
+  // Every (re)start reconciles references: covers boot, project add/remove, settings changes.
+  scheduleSkillReferenceSync()
 }
 
 export function stopFileWatcher(): void {

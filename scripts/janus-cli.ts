@@ -13,10 +13,9 @@
 //   janus ide enable --ide=<id>
 //   janus ide disable --ide=<id>
 //   janus stop                      (stop every Janus process and verify the port is free)
-//   janus reinstall [--remove-data=no|yes] [-y]   (rebuild from the repo; yes wipes data)
-//   janus remove | uninstall        (completely remove the local install)
+//   janus remove | uninstall        (completely remove the local install incl. app data)
 //   janus update                    (placeholder — no implementation yet)
-//   janus rebuild                   (rebuild Janus.exe from the repo, replace the install, restart the service)
+//   janus rebuild [--remove-data=no|yes] [-y]   (rebuild Janus.exe from the repo, replace the install, restart; yes wipes settings, configs, logs and database)
 //   janus __serve --port=N          (internal: background server process)
 //
 // The server is composed here from janus-api's exported pieces (registerRoutes,
@@ -60,6 +59,8 @@ const JANUS_VERSION: string =
 const installDir = process.env.JANUS_INSTALL_DIR?.trim() || dirname(process.execPath)
 const logsRoot = join(installDir, 'logs')
 const settingsPath = join(installDir, 'settings.json')
+// App data (database, repo-bank, ...) lives here, outside the install dir.
+const appDataRoot = join(process.env.ProgramData || 'C:\\ProgramData', 'Janus')
 
 // Everything under janus-api resolves settings/data from the install dir.
 process.env.JANUS_APP_ROOT = process.env.JANUS_APP_ROOT || installDir
@@ -519,14 +520,15 @@ Usage:
   janus ide enable --ide=<id>           Enable an IDE/CLI and sync it into projects
   janus ide disable --ide=<id>          Disable an IDE/CLI and purge its project folders
   janus stop                            Stop Janus completely (service and foreground runs)
-  janus reinstall [--remove-data=no|yes] [-y]
-                                        Reinstall from the repo. Default "no" keeps
-                                        settings.json and logs; "yes" wipes them (asks unless -y)
-  janus remove                          Completely remove the local Janus install
+  janus rebuild [--remove-data=no|yes] [-y]
+                                        Rebuild Janus from the repo, replace the install and
+                                        restart the service (runs in a new window). Default "no"
+                                        keeps settings, configs, logs and database; "yes" deletes
+                                        them all (asks unless -y)
+  janus remove                          Completely remove the local Janus install (exe, settings,
+                                        configs, logs and database)
   janus uninstall                       Same as remove
   janus update                          Update Janus (not implemented yet)
-  janus rebuild                         Rebuild Janus from the repo, replace the install and
-                                        restart the service (runs in a new window)
 `
 
 function cmdHelp(): number {
@@ -726,10 +728,12 @@ async function cmdRemove(): Promise<number> {
   }
 
   // 4. The install dir cannot be deleted while THIS exe is running from it:
-  //    hand deletion to a detached helper that waits for our exit, then deletes.
+  //    hand deletion to a detached helper that waits for our exit, then deletes
+  //    the install dir (exe, settings, logs) and the app data (database).
   const ps =
     `while (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 400 }; ` +
-    `Remove-Item -LiteralPath '${installDir.replace(/'/g, "''")}' -Recurse -Force -ErrorAction SilentlyContinue`
+    `Remove-Item -LiteralPath '${installDir.replace(/'/g, "''")}' -Recurse -Force -ErrorAction SilentlyContinue; ` +
+    `Remove-Item -LiteralPath '${appDataRoot.replace(/'/g, "''")}' -Recurse -Force -ErrorAction SilentlyContinue`
   const helper = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps], {
     detached: true,
     stdio: 'ignore',
@@ -738,7 +742,7 @@ async function cmdRemove(): Promise<number> {
   })
   helper.unref()
 
-  console.log(`Janus will be removed from ${installDir} when this process exits.`)
+  console.log(`Janus will be removed from ${installDir} and ${appDataRoot} when this process exits.`)
   return 0
 }
 
@@ -783,28 +787,26 @@ function runRepoScriptInWindow(scriptName: string, scriptArgs: string[]): number
   return 0
 }
 
-function cmdRebuild(): number {
-  const code = runRepoScriptInWindow('install-local.ps1', ['-StartService'])
-  if (code === 0) console.log('Rebuild started in a new window: it rebuilds Janus.exe, replaces the install and starts the service.')
-  return code
-}
-
-// remove-data=no (default) keeps settings.json and logs; yes wipes them after a confirmation.
-async function cmdReinstall(argv: string[]): Promise<number> {
+// Rebuilds Janus.exe from the repo and replaces the install (service restarted).
+// remove-data=no (default) keeps settings, configs, logs and database; yes deletes them all
+// after a confirmation (skipped with -y).
+async function cmdRebuild(argv: string[]): Promise<number> {
   const removeData = parseNamedFlag(argv, 'remove-data') ?? 'no'
   if (removeData !== 'no' && removeData !== 'yes') fail('--remove-data must be "no" or "yes".')
   const yes = argv.includes('-y') || argv.includes('--yes')
   if (removeData === 'yes' && !yes) {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
-    const answer = await rl.question(`This deletes ALL Janus settings, data and logs in ${installDir}. Type "yes" to continue: `)
+    const answer = await rl.question(`This deletes ALL Janus settings, configs, logs and database in ${installDir} and ${appDataRoot}. Type "yes" to continue: `)
     rl.close()
     if (answer.trim().toLowerCase() !== 'yes') {
       console.log('Cancelled. Nothing was changed.')
       return 1
     }
   }
-  const code = runRepoScriptInWindow('reinstall.ps1', ['-RemoveData', removeData, ...(yes ? ['-Yes'] : [])])
-  if (code === 0) console.log(`Reinstall started in a new window (remove-data=${removeData}).`)
+  const code = removeData === 'yes'
+    ? runRepoScriptInWindow('reinstall.ps1', ['-RemoveData', 'yes', '-Yes'])
+    : runRepoScriptInWindow('install-local.ps1', ['-StartService'])
+  if (code === 0) console.log(`Rebuild started in a new window (remove-data=${removeData}).`)
   return code
 }
 
@@ -1212,8 +1214,9 @@ async function main(): Promise<void> {
     case 'stop':
       process.exit(await cmdStop())
       break
-    case 'reinstall':
-      process.exit(await cmdReinstall(argv.slice(1)))
+    case 'rebuild':
+    case 'reinstall': // legacy alias of rebuild
+      process.exit(await cmdRebuild(argv.slice(1)))
       break
     case 'port':
       process.exit(await cmdPort(argv.slice(1)))
@@ -1224,9 +1227,6 @@ async function main(): Promise<void> {
       break
     case 'update':
       process.exit(cmdUpdate())
-      break
-    case 'rebuild':
-      process.exit(cmdRebuild())
       break
     default:
       console.error(`Unknown command: ${cmd}\n\n${USAGE}`)

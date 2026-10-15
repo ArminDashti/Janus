@@ -9,7 +9,8 @@
     running. settings.json and logs are kept.
   -RemoveData yes
     Asks for confirmation (skipped with -Yes), then remove-local.ps1 (deletes the whole local
-    install, settings and logs), then install-local.ps1 (fresh install, service started).
+    install, settings, configs, logs and the app data/database), then install-local.ps1
+    (fresh install, service started). Also run by: janus rebuild --remove-data=yes
 
 .PARAMETER RemoveData
   'no' keeps settings.json and logs (default). 'yes' wipes them.

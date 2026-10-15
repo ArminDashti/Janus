@@ -160,7 +160,6 @@ export function ProjectImportSection({ settings, onChange }: ProjectImportSectio
       <SettingsSection
         icon={Import}
         title="Import projects"
-        description="Browse any folder: every Git project (folder containing .git) under it is loaded in one action — no per-project import. Repos added to the folder later are detected automatically."
         aside={
           <button
             type="button"
@@ -171,14 +170,6 @@ export function ProjectImportSection({ settings, onChange }: ProjectImportSectio
           </button>
         }
       >
-        <textarea
-          value={pathInput}
-          onChange={(e) => setPathInput(e.target.value)}
-          placeholder={'C:\\Users\\you\\projects\\my-app\nC:\\Users\\you\\projects\\another-repo'}
-          rows={5}
-          spellCheck={false}
-          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-3 text-sm font-mono text-zinc-200 placeholder:text-zinc-600 resize-y focus:outline-none focus:border-blue-600"
-        />
         <div className="flex items-center gap-3">
           <button
             type="button"

@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Remove Janus: the local install (%LOCALAPPDATA%\Janus + user PATH entry) and, when present,
+  Remove Janus: the local install (%LOCALAPPDATA%\Janus + %ProgramData%\Janus app data + user PATH entry) and, when present,
   the legacy install (Windows services 'janus'/'janus-webui', C:\Program Files\Janus,
   %ProgramData%\Janus).
 
@@ -52,6 +52,12 @@ else {
     Write-Host "No local install at $root (skipping)."
 }
 Remove-JanusUserPathEntry -Dir $root
+
+# 1b. App data (database, repo-bank, ...) under %ProgramData%\Janus.
+if (Test-Path -LiteralPath $script:JanusDataRoot) {
+    Write-Host "Removing app data: $script:JanusDataRoot"
+    Remove-JanusLocalPathWithRetry -Path $script:JanusDataRoot
+}
 
 # 2. Legacy install (admin): services + C:\Program Files\Janus + %ProgramData%\Janus.
 if ($legacyPresent) {

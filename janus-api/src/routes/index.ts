@@ -24,6 +24,7 @@ import { normalizeScanPath, rescanProjectRoots } from '../services/project-root-
 import { resourceService } from '../services/resource.service'
 import { scannerService } from '../services/scanner.service'
 import { resolveSkillFromPath, syncSkillFromResolved } from '../services/skill-sync.service'
+import { syncSkillReferences } from '../services/skill-reference.service'
 import { settingsStore } from '../services/settings-store'
 import { applyStartupSetting } from '../services/startup.service'
 import { applyUpdate, checkForUpdates } from '../services/update.service'
@@ -214,8 +215,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     route(async () => {
       const startedAt = Date.now()
       agentDebugLog('B', 'routes/index.ts:sync', 'HTTP sync invoked', {})
-      await syncEnabledPlatformsToProjects()
       importedProjectsStore.pruneMissingOnDisk()
+      await syncSkillReferences()
+      await syncEnabledPlatformsToProjects()
       const added = await rescanProjectRoots()
       if (added.length > 0) {
         await resourceService.syncMandatoryForNewProjects(added.map((p) => p.id))
