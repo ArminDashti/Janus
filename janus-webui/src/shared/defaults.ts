@@ -36,6 +36,8 @@ export function createDefaultSettings(): AppSettings {
       skills: {},
       subAgents: {}
     },
+    hiddenSkills: [],
+    showHiddenSkills: false,
     updates: { checkOnStartup: true },
     uiFilters: {}
   }

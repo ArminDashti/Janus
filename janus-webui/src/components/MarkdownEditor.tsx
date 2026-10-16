@@ -15,6 +15,8 @@ interface MarkdownEditorProps {
   value: string
   onChange?: (value: string) => void
   onSave?: (value: string) => Promise<void>
+  onDiscard?: () => void
+  dirty?: boolean
   readOnly?: boolean
   className?: string
 }
@@ -79,6 +81,8 @@ export function MarkdownEditor({
   value,
   onChange,
   onSave,
+  onDiscard,
+  dirty = false,
   readOnly = false,
   className
 }: MarkdownEditorProps) {
@@ -159,6 +163,16 @@ export function MarkdownEditor({
         {filePath && <span className="text-xs text-zinc-500 truncate flex-1">{filePath}</span>}
         <div className={cn('flex items-center gap-2', !filePath && 'ml-auto')}>
           <CopyButton text={() => draft} />
+          {!readOnly && onDiscard && (
+            <button
+              type="button"
+              onClick={onDiscard}
+              disabled={!dirty}
+              className="px-3 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded disabled:opacity-50"
+            >
+              Discard
+            </button>
+          )}
           {!readOnly && onSave && (
             <button
               type="button"

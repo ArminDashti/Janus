@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { FileText, RefreshCw, Search } from 'lucide-react'
+import { Eye, EyeOff, FileText, Search } from 'lucide-react'
 import type { ResourceGroupSummary } from '@shared/types'
 import { Toggle } from '@renderer/components/Toggle'
 import { cn } from '@renderer/lib/utils'
 import { showMessage } from '@renderer/stores/messageStore'
+import { useAppStore } from '@renderer/stores/appStore'
 
 function skillDisplayName(name: string): string {
   return name.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? name
@@ -37,9 +38,26 @@ export function SkillPanel({
   collapseToggle
 }: SkillPanelProps) {
   const [pending, setPending] = useState<Record<string, boolean>>({})
-  const [saving, setSaving] = useState<string | null>(null)
   const [skillSearch, setSkillSearch] = useState('')
   const [assigningAll, setAssigningAll] = useState(false)
+  const { settings, loadSettings } = useAppStore()
+  const hiddenSkills = settings?.hiddenSkills ?? []
+  const showHiddenSkills = settings?.showHiddenSkills ?? false
+  const hiddenCount = skills.filter((s) => hiddenSkills.includes(skillDisplayName(s.name))).length
+  const listedSkills = useMemo(
+    () =>
+      showHiddenSkills
+        ? skills
+        : skills.filter((s) => !hiddenSkills.includes(skillDisplayName(s.name))),
+    [skills, hiddenSkills, showHiddenSkills]
+  )
+
+  const toggleShowHidden = () => {
+    if (!settings) return
+    void window.agentManager
+      .saveSettings({ ...settings, showHiddenSkills: !showHiddenSkills })
+      .then(() => loadSettings())
+  }
 
   useEffect(() => {
     setSkillSearch('')
@@ -57,37 +75,46 @@ export function SkillPanel({
   }, [skills, projectId, pending])
 
   const assignedCount = useMemo(
-    () => Object.values(effectiveAssigned).filter(Boolean).length,
-    [effectiveAssigned]
+    () => listedSkills.filter((s) => effectiveAssigned[skillDisplayName(s.name)]).length,
+    [listedSkills, effectiveAssigned]
   )
 
   const toggle = async (skill: ResourceGroupSummary) => {
     if (!projectId) return
     const resourceName = skillDisplayName(skill.name)
     const next = !effectiveAssigned[resourceName]
-
-    const matrix = await window.agentManager.getProjectMatrix('skill', resourceName)
-    const projectRows = matrix.filter((r) => !r.platformId)
-
-    const nextAssigned: Record<string, boolean> = {}
-    for (const r of projectRows) {
-      nextAssigned[r.projectId] =
-        r.projectId === projectId ? next : skill.assignedProjectIds.includes(r.projectId)
-    }
-
-    if (!next && !Object.values(nextAssigned).some(Boolean)) {
-      const confirmed = await showMessage({
-        title: 'Remove skill',
-        message: `This is the only project using "${resourceName}". Unassigning it removes the skill from all projects and it will disappear from the list.`,
-        confirm: true,
-        type: 'error'
+    const clearPending = () =>
+      setPending((p) => {
+        const n = { ...p }
+        delete n[resourceName]
+        return n
       })
-      if (!confirmed) return
-    }
 
+    // Optimistic: flip the switch before any await so it reacts instantly.
     setPending((p) => ({ ...p, [resourceName]: next }))
-    setSaving(resourceName)
     try {
+      const matrix = await window.agentManager.getProjectMatrix('skill', resourceName)
+      const projectRows = matrix.filter((r) => !r.platformId)
+
+      const nextAssigned: Record<string, boolean> = {}
+      for (const r of projectRows) {
+        nextAssigned[r.projectId] =
+          r.projectId === projectId ? next : skill.assignedProjectIds.includes(r.projectId)
+      }
+
+      if (!next && !Object.values(nextAssigned).some(Boolean)) {
+        const confirmed = await showMessage({
+          title: 'Remove skill',
+          message: `This is the only project using "${resourceName}". Unassigning it removes the skill from all projects and it will disappear from the list.`,
+          confirm: true,
+          type: 'error'
+        })
+        if (!confirmed) {
+          clearPending()
+          return
+        }
+      }
+
       const assignedIds = Object.entries(nextAssigned)
         .filter(([, v]) => v)
         .map(([k]) => k)
@@ -97,23 +124,13 @@ export function SkillPanel({
       await window.agentManager.setMandatory('skill', resourceName, mandatory)
       onRefresh?.()
       onSkillsChange()
-      setPending((p) => {
-        const n = { ...p }
-        delete n[resourceName]
-        return n
-      })
+      clearPending()
     } catch (e) {
-      setPending((p) => {
-        const n = { ...p }
-        delete n[resourceName]
-        return n
-      })
+      clearPending()
       await showMessage({
         message: e instanceof Error ? e.message : 'Save failed',
         type: 'error'
       })
-    } finally {
-      setSaving(null)
     }
   }
 
@@ -155,7 +172,7 @@ export function SkillPanel({
 
   const visibleSkills = useMemo(() => {
     const q = skillSearch.trim().toLowerCase()
-    const sorted = [...skills].sort((a, b) =>
+    const sorted = [...listedSkills].sort((a, b) =>
       skillDisplayName(a.name).localeCompare(skillDisplayName(b.name))
     )
     if (!q) return sorted
@@ -163,14 +180,14 @@ export function SkillPanel({
       const haystack = `${s.name} ${s.description} ${(s.tags ?? []).join(' ')}`
       return haystack.toLowerCase().includes(q)
     })
-  }, [skills, skillSearch])
+  }, [listedSkills, skillSearch])
 
   return (
     <aside className="w-full h-full flex flex-col">
       <div className="px-3 py-2 border-b border-zinc-800">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-xs font-medium text-zinc-400">
-            Skills · {assignedCount}/{skills.length}
+            Skills · {assignedCount}/{listedSkills.length}
           </h2>
           <div className="flex items-center gap-2">
             <span className="text-xs text-zinc-400">
@@ -186,16 +203,29 @@ export function SkillPanel({
             {collapseToggle}
           </div>
         </div>
-        <div className="relative mt-2">
-          <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500" />
-          <input
-            type="text"
-            value={skillSearch}
-            onChange={(e) => setSkillSearch(e.target.value)}
-            placeholder="Filter skills…"
-            disabled={!projectId}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 pl-6 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 disabled:opacity-50"
-          />
+        <div className="flex items-center gap-2 mt-2">
+          <div className="relative flex-1 min-w-0">
+            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              value={skillSearch}
+              onChange={(e) => setSkillSearch(e.target.value)}
+              placeholder="Filter skills…"
+              disabled={!projectId}
+              className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 pl-6 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 disabled:opacity-50"
+            />
+          </div>
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={toggleShowHidden}
+              aria-pressed={showHiddenSkills}
+              title={showHiddenSkills ? 'Hide hidden skills' : `Show hidden skills (${hiddenCount})`}
+              className="shrink-0 p-1.5 rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            >
+              {showHiddenSkills ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          )}
         </div>
       </div>
       <div className="flex-1 overflow-y-auto py-1">
@@ -216,7 +246,6 @@ export function SkillPanel({
           visibleSkills.map((skill) => {
             const key = skillDisplayName(skill.name)
             const assigned = effectiveAssigned[key] ?? false
-            const isSaving = saving === key
             const isSelected = key === selectedSkillName
             return (
               <div
@@ -247,19 +276,13 @@ export function SkillPanel({
                     {key}
                   </span>
                 </button>
-                {isSaving ? (
-                  <RefreshCw size={14} className="animate-spin text-zinc-500 shrink-0" />
-                ) : (
-                  <Toggle
-                    checked={assigned}
-                    onChange={() => void toggle(skill)}
-                    title={
-                      assigned
-                        ? `Remove skill from ${projectLabel}`
-                        : `Use skill for ${projectLabel}`
-                    }
-                  />
-                )}
+                <Toggle
+                  checked={assigned}
+                  onChange={() => void toggle(skill)}
+                  title={
+                    assigned ? `Remove skill from ${projectLabel}` : `Use skill for ${projectLabel}`
+                  }
+                />
               </div>
             )
           })

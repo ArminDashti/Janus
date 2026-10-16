@@ -445,15 +445,27 @@ export class ResourceService {
     return pickCanonical(instances)
   }
 
+  /** Lookup from the cached scan; full scan only when the cache is cold or misses the resource. */
+  private async findCanonicalForUpdate(
+    settings: AppSettings,
+    resourceType: Exclude<ResourceType, 'mcp'>,
+    resourceName: string
+  ): Promise<{ scan: ScanResult; canonical: ScannedResource }> {
+    const cached = scannerService.getCachedScan()
+    const cachedHit = cached && this.findCanonicalInstance(cached, resourceType, resourceName)
+    const scan = cachedHit ? cached : await scannerService.scanAll(settings)
+    const canonical = cachedHit || this.findCanonicalInstance(scan, resourceType, resourceName)
+    if (!canonical) throw new Error(`Resource not found: ${resourceName}`)
+    return { scan, canonical }
+  }
+
   async applyProjectAssignment(
     resourceType: Exclude<ResourceType, 'mcp'>,
     resourceName: string,
     assignedProjectIds: string[]
   ): Promise<void> {
     const settings = settingsStore.get()
-    const scan = await scannerService.scanAll(settings)
-    const canonical = this.findCanonicalInstance(scan, resourceType, resourceName)
-    if (!canonical) throw new Error(`Resource not found: ${resourceName}`)
+    const { scan, canonical } = await this.findCanonicalForUpdate(settings, resourceType, resourceName)
 
     const matrix = this.getProjectMatrix(scan, settings, resourceType, resourceName)
     // Platform ("<Name> (Global)") rows are managed by applyGlobalAssignment, never here.
@@ -492,9 +504,7 @@ export class ResourceService {
     const platform = settings.platforms.find((p) => p.id === platformId)
     if (!platform?.enabled) throw new Error('IDE/CLI is not enabled')
 
-    const scan = await scannerService.scanAll(settings)
-    const canonical = this.findCanonicalInstance(scan, resourceType, resourceName)
-    if (!canonical) throw new Error(`Resource not found: ${resourceName}`)
+    const { canonical } = await this.findCanonicalForUpdate(settings, resourceType, resourceName)
 
     if (assigned) {
       await assignmentService.assignToPlatformGlobal(canonical, resourceType, platformId)

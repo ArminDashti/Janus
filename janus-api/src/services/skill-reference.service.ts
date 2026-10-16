@@ -3,6 +3,7 @@ import { rm } from 'fs/promises'
 import { basename, isAbsolute, join, relative, resolve } from 'path'
 import { getDataPath } from '../app-paths'
 import { getAdapter } from '../platforms'
+import { runLimited } from '../shared/utils'
 import { fileService } from './file.service'
 import { settingsStore } from './settings-store'
 
@@ -64,14 +65,18 @@ async function runSync(changed: string[] | null): Promise<void> {
   const sources = await collectSkillSources()
 
   const keep = new Set<string>()
+  const copies: Array<() => Promise<void>> = []
   for (const s of sources) {
     const dest = join(root, s.projectId, s.skillName)
     keep.add(resolve(dest))
     if (changed && !changed.some((p) => isWithin(resolve(p), resolve(s.sourceRoot)))) continue
     // ponytail: copies the whole skill folder on each change; upgrade to per-file copy if skills grow large.
-    await fileService.removePath(dest)
-    await fileService.copyDirectory(s.sourceRoot, dest)
+    copies.push(async () => {
+      await fileService.removePath(dest)
+      await fileService.copyDirectory(s.sourceRoot, dest)
+    })
   }
+  await runLimited(copies)
 
   // Drop references whose skill or project no longer exists in Janus.
   for (const projectDir of await fileService.listDirectories(root)) {

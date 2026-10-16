@@ -3,6 +3,15 @@ import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 
+/** Run tasks with at most `limit` in flight (I/O-bound copies; keeps Windows handles bounded). */
+export async function runLimited(tasks: Array<() => Promise<void>>, limit = 8): Promise<void> {
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < tasks.length) await tasks[next++]()
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker))
+}
+
 export {
   isMarkdownFile,
   parseFrontmatter,

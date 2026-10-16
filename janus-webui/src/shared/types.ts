@@ -113,6 +113,10 @@ export interface AppSettings {
     skills: Record<string, boolean>
     subAgents: Record<string, boolean>
   }
+  /** Skill display names hidden from the Skills list and project Skill panel (UI only). */
+  hiddenSkills: string[]
+  /** Show hidden skills in the Skills list and project Skill panel. */
+  showHiddenSkills: boolean
 }
 
 /** One upstream commit pending in the Janus install checkout. */

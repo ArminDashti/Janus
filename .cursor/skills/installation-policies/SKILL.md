@@ -2,29 +2,22 @@
 name: installation-policies
 description: >-
   Armin's rules for installing software: only official and trusted sources,
-  always the latest stable version, and teach the human how to use it after
-  install. Use whenever asked to install, add, set up, or upgrade an app,
+  always the latest stable version, verify it works, and report it in a grid. Use whenever asked to install, add, set up, or upgrade an app,
   package, framework, library, CLI, tool, extension, plugin, or dependency
   (winget, apt, npm, pip, NuGet, cargo, Docker image, VS Code/Cursor extension,
   installer download), on any OS or server.
-disable-model-invocation: false
-metadata:
-  version: 1.0.0
-  author: "Armin Dashti"
-  category: agents
-  tags: [install, setup, package-manager, dependencies, winget, apt, npm, pip, security, supply-chain, latest-version, onboarding]
-  last_updated: "2026-10-09 17:40:28"
-  uuid: 0a4ec3ba-94f0-4dfa-9fc2-67552697c12a
+author: "Armin Dashti"
+uuid: 0a4ec3ba-94f0-4dfa-9fc2-67552697c12a
 ---
-# Installation policies
+# 🛠️ Installation policies
 
 Three rules. They always apply. User instructions for a specific install win only for that install.
 
 1. **Only install from official and trusted sources.**
 2. **Always install the latest version.**
-3. **After installation, teach the human how to use it.**
+3. **Verify it works; explain how to use it only if the user asks.**
 
-## Rule 1: Official and trusted sources only
+## 🔒 Rule 1: Official and trusted sources only
 
 Official means one of:
 
@@ -49,7 +42,7 @@ Never:
 
 If the official source is blocked or unreachable, report it and ask. Do not switch to an unofficial copy.
 
-## Rule 2: Latest version
+## 🆕 Rule 2: Latest version
 
 - Install the **latest stable** release. No beta, RC, preview, or nightly unless the user asks.
 - Check the latest version from the official source before installing (`winget show <id>`, `npm view <pkg> version`, `pip index versions <pkg>`, releases page).
@@ -57,48 +50,52 @@ If the official source is blocked or unreachable, report it and ask. Do not swit
 - If already installed but outdated, upgrade it (same source).
 - Report the exact version installed.
 
-## Rule 3: Teach the human
-
-After install:
+## ✅ Rule 3: Verify, how-to only on request
 
 1. Verify it works: run the version command (e.g. `<tool> --version`) or a minimal smoke test. If it fails, fix or report; do not claim success.
-2. Give a short, beginner-friendly how-to using the template below. Keep it practical; link the official docs for more.
+2. Do **not** add a how-to guide unless the user asks for one. If they ask, use the how-to template below.
 
-## Also
+## ⚠️ Also
 
 - Ask before installing system-wide, admin/root-level, or global things the user did not request (services, drivers, PATH changes, global npm/pip packages).
 - Prefer user-scope or project-local installs when either works.
 - Never put secrets (API keys, tokens, passwords) in install commands or chat; use env vars or the tool's own login flow.
 - Report what was installed, the version, the source, and where it lives.
 
-## Output template (after install)
+## 📋 Output template (after install)
+
+Report every install in a grid. Use the grid that matches what was installed (both if needed).
+
+### 🖥️ Apps
+
+| App | Source | Location |
+|-----|--------|----------|
+| GitHub Desktop | ☑️ [GitHub](https://desktop.github.com) | `C:\Users\<user>\AppData\Local\GitHubDesktop` |
+
+### 📦 Packages, libraries, frameworks
+
+| Name | Language | Source |
+|------|----------|--------|
+| Pandas | Python | ☑️ [PyPI](https://pypi.org/project/pandas/) |
+
+### 🏷️ Source rules
+
+- 🔗 **Source is always a hyperlink** with a short name as the text (e.g. `[GitHub](...)`). Never write the full URL as text.
+- ☑️ **Blue tick** = official source (vendor site, official repo, official registry or verified publisher).
+- No tick = trusted, safe source that is not the official one. Say why it was used.
+
+### 🎓 How to use (only when the user asks)
 
 ```text
-Installed: <name> <version>
-Source: <official source / package manager + id>
-Location: <install path or scope (user/global/project)>
-Verified: <command> -> <output>
-
-What it is: <one sentence>
-Start / run: <command or how to open>
-Most useful:
+✅ Verified: <command> -> <output>
+💡 What it is: <one sentence>
+▶️ Start / run: <command or how to open>
+⭐ Most useful:
 - <command 1>  # what it does
 - <command 2>
 - <command 3>
-Config: <path to config file / settings>
-Update: <command>
-Uninstall: <command>
-Docs: <official docs URL>
+⚙️ Config: <path to config file / settings>
+🔄 Update: <command>
+🗑️ Uninstall: <command>
+📚 Docs: [<name> docs](<official docs URL>)
 ```
-
-## Examples
-
-**Example 1:** Windows app via winget
-
-- Input: "Install Git"
-- Flow: `winget search git` → pick the id from the real publisher (`Git.Git`) → `winget show --id Git.Git` (latest version) → `winget install --id Git.Git --exact --source winget` → open a new terminal, verify `git --version` → template: `git clone <url>`, `git status`, `git add .` + `git commit -m "msg"`, `git pull` / `git push`; config `~/.gitconfig` (`git config --global user.name "…"`); update `winget upgrade --id Git.Git`; uninstall `winget uninstall --id Git.Git`; docs https://git-scm.com/doc
-
-**Example 2:** npm package in a project
-
-- Input: "Add zod to this project"
-- Flow: check `package.json`/lockfile for an existing pin → `npm view zod version` → `npm install zod` (project-local, not `-g`) → verify `npm ls zod` → template: what it is, minimal schema + `parse` example, update `npm update zod` / `npm install zod@latest`, uninstall `npm uninstall zod`, official docs link.

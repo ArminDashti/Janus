@@ -129,6 +129,9 @@ unverified) or skip it. This keeps confident guesses out.
 - Open Settings and About as modal pages in a standard window size, with fade-in and fade-out animation on both open and close.
 - After each task, briefly tell the user the result; omit any follow-up remark when none is needed.
 - Collapsible section toggles keep the title and count visible when collapsed (e.g. `Projects · 4/38`), sit on the same line as the title, and must both collapse and expand; bulk actions like Assign all use a toggle matching the other skill toggles.
+- Project skill toggles apply instantly on click, with no separate save step or spinner.
+- Outside edits to Janus-managed skill folders must never be blocked, and Janus must detect them.
+- Sync and assign actions must stay fast; avoid redundant full filesystem scans and copies.
 
 ## Learned Workspace Facts
 

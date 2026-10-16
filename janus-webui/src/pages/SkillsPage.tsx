@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { File, FileCode, FileJson, FileText, Trash } from 'lucide-react'
-import type { ResourceGroupSummary, SkillResource, UiSearchField } from '@shared/types'
+import { Eye, EyeOff, File, FileCode, FileJson, FileText, Trash } from 'lucide-react'
+import type { AppSettings, ResourceGroupSummary, SkillResource, UiSearchField } from '@shared/types'
 import { cn } from '@renderer/lib/utils'
 import { MarkdownEditor } from '@renderer/components/MarkdownEditor'
 import { ProjectPanel } from '@renderer/components/resources/ProjectPanel'
@@ -43,6 +43,11 @@ interface SkillListProps {
   selectedName: string | null
   onSelect: (name: string) => void
   onDelete: (row: ResourceGroupSummary) => void
+  hiddenSkills: string[]
+  onToggleHidden: (row: ResourceGroupSummary) => void
+  hiddenCount: number
+  showHidden: boolean
+  onShowHiddenChange: (show: boolean) => void
   search: string
   onSearch: (v: string) => void
   searchField: UiSearchField
@@ -56,6 +61,11 @@ function SkillList({
   selectedName,
   onSelect,
   onDelete,
+  hiddenSkills,
+  onToggleHidden,
+  hiddenCount,
+  showHidden,
+  onShowHiddenChange,
   search,
   onSearch,
   searchField,
@@ -69,7 +79,22 @@ function SkillList({
     <BrowserColumn
       title="Skills"
       countLabel={String(skills.length)}
-      actions={collapseToggle}
+      actions={
+        <>
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={() => onShowHiddenChange(!showHidden)}
+              aria-pressed={showHidden}
+              title={showHidden ? 'Hide hidden skills' : `Show hidden skills (${hiddenCount})`}
+              className="p-1.5 rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            >
+              {showHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          )}
+          {collapseToggle}
+        </>
+      }
       search={search}
       onSearch={onSearch}
       searchPlaceholder="Search skills..."
@@ -88,8 +113,9 @@ function SkillList({
         shown.map((s) => {
           const key = skillDisplayName(s.name)
           const isSelected = key === selectedName
+          const isHidden = hiddenSkills.includes(key)
           return (
-            <div key={key} className={browserRowClass(isSelected)}>
+            <div key={key} className={cn(browserRowClass(isSelected), isHidden && 'opacity-50')}>
               <button
                 type="button"
                 onClick={() => onSelect(key)}
@@ -97,6 +123,22 @@ function SkillList({
                 title={s.name}
               >
                 {skillDisplayName(s.name)}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleHidden(s)
+                }}
+                className={cn(
+                  'p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity',
+                  isSelected
+                    ? 'text-white/70 hover:text-white hover:bg-white/10'
+                    : 'text-zinc-600 hover:text-zinc-200 hover:bg-zinc-700/60'
+                )}
+                title={isHidden ? `Unhide ${key}` : `Hide ${key}`}
+              >
+                {isHidden ? <Eye size={12} strokeWidth={1.75} /> : <EyeOff size={12} strokeWidth={1.75} />}
               </button>
               <button
                 type="button"
@@ -398,7 +440,9 @@ export function SkillContent({
 // ─── Main SkillsPage: three-pane layout (+ Files panel when a skill has files) ─
 
 export function SkillsPage() {
-  const { refreshScan } = useAppStore()
+  const { refreshScan, settings, loadSettings } = useAppStore()
+  const hiddenSkills = settings?.hiddenSkills ?? []
+  const showHiddenSkills = settings?.showHiddenSkills ?? false
   const [skills, setSkills] = useState<ResourceGroupSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
@@ -433,10 +477,28 @@ export function SkillsPage() {
     return () => window.removeEventListener('scan-changed', handler)
   }, [load])
 
+  const hiddenCount = skills.filter((s) => hiddenSkills.includes(skillDisplayName(s.name))).length
+
+  const saveHiddenSettings = (patch: Partial<AppSettings>) => {
+    if (!settings) return
+    void window.agentManager.saveSettings({ ...settings, ...patch }).then(() => loadSettings())
+  }
+
+  const toggleHidden = (row: ResourceGroupSummary) => {
+    const key = skillDisplayName(row.name)
+    const next = hiddenSkills.includes(key)
+      ? hiddenSkills.filter((n) => n !== key)
+      : [...hiddenSkills, key]
+    saveHiddenSettings({ hiddenSkills: next })
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
+    const visible = showHiddenSkills
+      ? skills
+      : skills.filter((s) => !hiddenSkills.includes(skillDisplayName(s.name)))
     const list = q
-      ? skills.filter((s) => {
+      ? visible.filter((s) => {
           const haystack =
             searchField === 'tags'
               ? (s.tags ?? []).join(' ')
@@ -445,11 +507,11 @@ export function SkillsPage() {
                 : `${s.name} ${s.description}`
           return haystack.toLowerCase().includes(q)
         })
-      : skills
+      : visible
     return [...list].sort((a, b) =>
       skillDisplayName(a.name).localeCompare(skillDisplayName(b.name))
     )
-  }, [skills, search, searchField])
+  }, [skills, search, searchField, showHiddenSkills, hiddenSkills])
 
   const handleDelete = useCallback(
     async (row: ResourceGroupSummary) => {
@@ -511,6 +573,11 @@ export function SkillsPage() {
             selectedName={selected}
             onSelect={setSelected}
             onDelete={(row) => void handleDelete(row)}
+            hiddenSkills={hiddenSkills}
+            onToggleHidden={toggleHidden}
+            hiddenCount={hiddenCount}
+            showHidden={showHiddenSkills}
+            onShowHiddenChange={(show) => saveHiddenSettings({ showHiddenSkills: show })}
             search={search}
             onSearch={setSearch}
             searchField={searchField}

@@ -164,9 +164,14 @@ export function startFileWatcher(): void {
   if (!watcher) {
     const paths = collectWatchPaths()
     if (paths.length > 0) {
+      // Polling (stat-based) so Windows never locks watched folders against outside edits.
+      // ponytail: stats every watched path each interval; upgrade to native watch with a
+      // per-folder handle release if the watched tree grows large.
       watcher = watch(paths, {
         ignoreInitial: true,
         depth: 12,
+        usePolling: true,
+        interval: 1000,
         awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 100 }
       })
 
@@ -196,7 +201,7 @@ export function startFileWatcher(): void {
   if (!rootsWatcher) {
     const rootPaths = collectRootScanPaths()
     if (rootPaths.length > 0) {
-      rootsWatcher = watch(rootPaths, { ignoreInitial: true, depth: 2 })
+      rootsWatcher = watch(rootPaths, { ignoreInitial: true, depth: 2, usePolling: true, interval: 1000 })
       // Every directory event (re)starts the debounce; a clone keeps firing
       // until `.git` is fully written, so the rescan runs on a settled repo.
       rootsWatcher.on('addDir', () => scheduleRootsRescan())

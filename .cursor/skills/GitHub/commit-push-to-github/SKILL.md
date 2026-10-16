@@ -5,19 +5,13 @@ description: >-
   reconciles newer-wins conflicts, and pushes to main. Uses GitHub MCP only for
   GitHub platform work; stops and tells the human if MCP is unavailable.
   Windows 11; never blocks the full run on one repo.
-disable-model-invocation: false
-metadata:
-  version: "2.3.0"
-  author: Armin Dashti
-  category: git
-  tags: [github, commit, push, mcp, dirs, windows]
-  last_updated: "2026-09-02 18:47:00"
-  uuid: 5264a3ba-1035-4f78-85d1-b675530af8b1
+author: Armin Dashti
+uuid: 5264a3ba-1035-4f78-85d1-b675530af8b1
 ---
 
 # Commit Push to GitHub
 
-## When to use1
+## When to use
 
 - User asks to commit and push all (or listed) repos, sync the GitHub root up, or put everything on `main`
 - Scan roots come from `dirs.txt` in this skill directory (one path per line; `#` comments allowed)

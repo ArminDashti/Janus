@@ -16,6 +16,7 @@ import { projectBootstrapService } from './project-bootstrap.service'
 import { scannerService } from './scanner.service'
 import { settingsStore } from './settings-store'
 import { getAdapter } from '../platforms'
+import { runLimited } from '../shared/utils'
 
 type ScannedResource = SkillResource | SubAgentResource
 
@@ -41,19 +42,24 @@ function resourceKey(item: ScannedResource): string {
  */
 export async function importNewestSkillsIntoStore(scan: ScanResult): Promise<void> {
   const store = getSkillsStorePath()
+  const remote = scan.skills.filter((skill) => skill.source.type !== 'local')
+  const mtimes = await Promise.all(
+    remote.map((skill) => fileService.getMtime(join(skill.rootPath, 'SKILL.md')).then((m) => m ?? 0))
+  )
   const newest = new Map<string, { skill: SkillResource; mtime: number }>()
-  for (const skill of scan.skills) {
-    if (skill.source.type === 'local') continue
-    const mtime = (await fileService.getMtime(join(skill.rootPath, 'SKILL.md'))) ?? 0
+  remote.forEach((skill, i) => {
+    const mtime = mtimes[i]
     if (mtime > (newest.get(skill.name)?.mtime ?? -1)) newest.set(skill.name, { skill, mtime })
-  }
-  for (const [name, { skill, mtime }] of newest) {
-    const dest = join(store, ...name.split('/'))
-    const storeMtime = (await fileService.getMtime(join(dest, 'SKILL.md'))) ?? -1
-    if (storeMtime >= mtime) continue
-    await fileService.removePath(dest)
-    await fileService.copyDirectory(skill.rootPath, dest)
-  }
+  })
+  await runLimited(
+    [...newest].map(([name, { skill, mtime }]) => async () => {
+      const dest = join(store, ...name.split('/'))
+      const storeMtime = (await fileService.getMtime(join(dest, 'SKILL.md'))) ?? -1
+      if (storeMtime >= mtime) return
+      await fileService.removePath(dest)
+      await fileService.copyDirectory(skill.rootPath, dest)
+    })
+  )
 }
 
 /**
@@ -68,12 +74,17 @@ export async function syncEnabledPlatformsToProjects(): Promise<void> {
   await importNewestSkillsIntoStore(scan)
   scan = await scannerService.scanAll(settingsStore.get())
 
+  // Every copy target is a distinct folder, so the overwrites are independent and run in parallel.
+  const jobs: Array<() => Promise<void>> = []
+
   // IDE/CLI global copies: refresh each one that exists from the store.
   for (const copy of scan.skills) {
     if (copy.source.type !== 'platform') continue
     const canonical = scan.skills.find((s) => s.source.type === 'local' && s.name === copy.name)
     if (canonical) {
-      await assignmentService.assignToPlatformGlobal(canonical, 'skill', copy.source.id as PlatformId, true)
+      jobs.push(() =>
+        assignmentService.assignToPlatformGlobal(canonical, 'skill', copy.source.id as PlatformId, true)
+      )
     }
   }
 
@@ -100,9 +111,11 @@ export async function syncEnabledPlatformsToProjects(): Promise<void> {
         sameName[0]
 
       if (!canonical) continue
-      await assignmentService.assignToProject(canonical, resourceType, projectId, true)
+      jobs.push(() => assignmentService.assignToProject(canonical, resourceType, projectId, true))
     }
   }
+
+  await runLimited(jobs)
 }
 
 /** Server names declared in a platform's mcp.json (empty when missing or invalid). */

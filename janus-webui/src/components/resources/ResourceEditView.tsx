@@ -19,6 +19,13 @@ async function confirmSave(filePath: string): Promise<boolean> {
   })
 }
 
+async function confirmDiscard(filePath: string): Promise<boolean> {
+  return showMessage({
+    message: `Discard unsaved changes to ${fileBaseName(filePath)}?`,
+    confirm: true
+  })
+}
+
 type ListableResourceType = Exclude<ResourceType, 'mcp'>
 type CanonicalResource = SkillResource | SubAgentResource
 
@@ -63,6 +70,7 @@ export function ResourceEditView({ resourceType, resourceName, onBack }: Resourc
   const [resource, setResource] = useState<CanonicalResource | null>(null)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [content, setContent] = useState('')
+  const [savedContent, setSavedContent] = useState('')
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -76,7 +84,9 @@ export function ResourceEditView({ resourceType, resourceName, onBack }: Resourc
       setResource(canonical)
       const file = getDefaultFile(canonical, resourceType)
       setSelectedFile(file)
-      setContent(await window.agentManager.readFile(file))
+      const text = await window.agentManager.readFile(file)
+      setContent(text)
+      setSavedContent(text)
     } finally {
       setLoading(false)
     }
@@ -93,7 +103,16 @@ export function ResourceEditView({ resourceType, resourceName, onBack }: Resourc
 
   const openFile = async (path: string) => {
     setSelectedFile(path)
-    setContent(await window.agentManager.readFile(path))
+    const text = await window.agentManager.readFile(path)
+    setContent(text)
+    setSavedContent(text)
+  }
+
+  const isDirty = content !== savedContent
+
+  const discardChanges = async () => {
+    if (!(await confirmDiscard(selectedFile ?? resourceName))) return
+    setContent(savedContent)
   }
 
   if (loading) {
@@ -138,7 +157,16 @@ export function ResourceEditView({ resourceType, resourceName, onBack }: Resourc
             }
             right={
               selectedFile ? (
-                <EditorPane filePath={selectedFile} content={content} onChange={setContent} resourceType={resourceType} resourceName={resourceName} />
+                <EditorPane
+                  filePath={selectedFile}
+                  content={content}
+                  onChange={setContent}
+                  dirty={isDirty}
+                  onDiscard={() => void discardChanges()}
+                  onSaved={setSavedContent}
+                  resourceType={resourceType}
+                  resourceName={resourceName}
+                />
               ) : (
                 <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
                   Select a file
@@ -153,6 +181,9 @@ export function ResourceEditView({ resourceType, resourceName, onBack }: Resourc
                 filePath={selectedFile}
                 content={content}
                 onChange={setContent}
+                dirty={isDirty}
+                onDiscard={() => void discardChanges()}
+                onSaved={setSavedContent}
                 resourceType={resourceType}
                 resourceName={resourceName}
                 onFilePathChange={setSelectedFile}
@@ -169,6 +200,9 @@ function EditorPane({
   filePath,
   content,
   onChange,
+  dirty,
+  onDiscard,
+  onSaved,
   resourceType,
   resourceName,
   onFilePathChange
@@ -176,6 +210,9 @@ function EditorPane({
   filePath: string
   content: string
   onChange: (v: string) => void
+  dirty: boolean
+  onDiscard: () => void
+  onSaved: (v: string) => void
   resourceType?: ListableResourceType
   resourceName?: string
   onFilePathChange?: (path: string) => void
@@ -188,6 +225,8 @@ function EditorPane({
         filePath={filePath}
         value={content}
         onChange={onChange}
+        dirty={dirty}
+        onDiscard={onDiscard}
         onSave={async (v) => {
           if (!(await confirmSave(filePath))) return
           if (isSkillMd && resourceName) {
@@ -200,6 +239,7 @@ function EditorPane({
           } else {
             await window.agentManager.writeFile(filePath, v)
           }
+          onSaved(v)
         }}
       />
     )
@@ -208,9 +248,12 @@ function EditorPane({
     <JsonEditor
       value={content}
       onChange={onChange}
+      dirty={dirty}
+      onDiscard={onDiscard}
       onSave={async (v) => {
         if (!(await confirmSave(filePath))) return
         await window.agentManager.writeFile(filePath, v)
+        onSaved(v)
       }}
     />
   )

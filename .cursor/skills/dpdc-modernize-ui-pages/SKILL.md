@@ -1,32 +1,8 @@
 ---
-description: 
-metadata:
-  version: 1.0.0
-  author: "Armin Dashti"
-  tags: []
-  last_updated: "2026-10-08 22:11:19"
-  uuid: 6968f558-ce1b-40ea-a380-80e29ac20354
----
-﻿---
-description: 
-metadata:
-  version: 1.0.0
-  author: "Armin Dashti"
-  category: 
-  tags: []
-  last_updated: "2026-09-10 12:50:20"
-  uuid: 86d7a9da-279b-4d03-a6b1-70c4e7721ee6
----
 name: dpdc-modernize-ui-pages
 description: Executes a loop (gather > eval > redesign > verify) to modernize legacy .aspx UI. Strictly token-efficient.
-disable-model-invocation: false
-metadata:
-  version: "1.1.0"
-  author: Armin Dashti
-  category: webui
-  tags: [pakhsh360, modernize, redesign, ui-verify, token-optimized]
-  last_updated: "2026-09-09 09:30:00"
-  uuid: 822ea516-37bb-4028-a68f-d3870b33fdd7
+author: Armin Dashti
+uuid: 822ea516-37bb-4028-a68f-d3870b33fdd7
 ---
 
 # Pakhsh360 UI Modernization Loop

@@ -47,7 +47,7 @@ metadata:
 | Contact | Obfuscated email link (Step 4) |
 | Quotes | English blockquote, then Persian RTL blockquote |
 
-- Portrait source in this skill: `standards/about-armin/armin.png` (copy into the app as `public/about-me/armin.png`, served as `/about-me/armin.png`)
+- Portrait source in this skill: `about-me/armin.png` (copy into the app as `public/about-me/armin.png`, served as `/about-me/armin.png`)
 - If missing in the app, show a short placeholder: `Photo placeholder — add public/about-me/armin.png`
 - Prefer a readable max-width column (helix uses ~`max-w-3xl`); keep spacing calm and uncluttered
 
