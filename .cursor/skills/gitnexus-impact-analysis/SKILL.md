@@ -6,8 +6,8 @@ metadata:
   version: 1.0.0
   author: "Armin Dashti"
   tags: []
-  last_updated: "2026-10-08 22:11:19"
-  uuid: ad2e951b-23c2-4efb-be63-a07f76bf2394
+  last_updated: "2026-10-17 08:49:04"
+  uuid: 74dadff5-2bac-4039-aa38-8c7583de0984
 ---
 # Impact Analysis with GitNexus
 
